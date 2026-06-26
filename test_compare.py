@@ -15,30 +15,7 @@ from plot_compare import (
 )
 
 
-#RUN_MODE = "LIVE_NOISE"      # live ADC noise, save/compare ASD only
-#RUN_MODE = "SYNTH_TEST"    # synthetic sine sweep, no serial
-RUN_MODE = "EXT_SINE_TEST" # real external sine into ADC, calculate accuracy
-
-#LIVE_NOISE:
-#   plot ASD V/√Hz
-#   save ASD V/√Hz
-#    compare noise floors
-#    no gain/frequency error stats
-
-#SYNTH_TEST:
-#   generate sine in Python
-#    use mag_V for gain/frequency error
-#    save test_results
-
-#EXT_SINE_TEST:
-#    read real ADC blocks from external sine input
-#    use mag_V for gain/frequency error
-#    save test_results
-
-TEST_MODE = RUN_MODE in ["SYNTH_TEST", "EXT_SINE_TEST"]
-USE_SERIAL = RUN_MODE in ["LIVE_NOISE", "EXT_SINE_TEST"]
-DO_ERROR_ANALYSIS = RUN_MODE in ["SYNTH_TEST", "EXT_SINE_TEST"]
-DO_NOISE_STATS = RUN_MODE == "LIVE_NOISE"
+TEST_MODE = False
 
 PORT = "/dev/cu.usbmodem101"
 BAUD = 2000000
@@ -160,19 +137,16 @@ def generate_low_high_blocks():
     return blocks
 
 
-if RUN_MODE == "SYNTH_TEST":
-    print("RUN_MODE = SYNTH_TEST - using synthetic clean sine wave, no serial connection.")
+if TEST_MODE:
+    print("TEST_MODE is ON - using synthetic clean sine wave, no serial connection.")
     RAW_SAMPLE_RATE_HZ = TEST_RAW_SAMPLE_RATE_HZ
     clear_saved_measurements()
+else:
 
-elif USE_SERIAL:
     ser = serial.Serial(PORT, BAUD, timeout=0.05)
     time.sleep(2)
     print("Connected to:", ser.name)
     RAW_SAMPLE_RATE_HZ = request_raw_sample_rate()
-
-else:
-    raise ValueError(f"Unsupported RUN_MODE: {RUN_MODE}")
 
 
 BANDS = {
@@ -196,7 +170,7 @@ BANDS = {
 BAND_ORDER = ["LOW","MID", "HIGH"]
 band_results = {}
 
-INSTRUMENT_LABEL = RUN_MODE if TEST_MODE else "SAMD21"
+INSTRUMENT_LABEL = "TEST_MODE" if TEST_MODE else "SAMD21"
 
 PLOT_CONFIG = {
     "label": INSTRUMENT_LABEL,
@@ -238,7 +212,7 @@ line, = ax.plot(
     linewidth=PLOT_CONFIG["linewidth"],
     label="Stitched ASD",
 )
-if DO_NOISE_STATS:
+if not TEST_MODE:
     median_line = ax.axhline(
         y=Y_MIN,
         linestyle="--",
@@ -257,7 +231,7 @@ if DO_NOISE_STATS:
         label="90% Floor",
     )
 
-ax.set_title("ADC Noise Spectrometer" + (f"  [{RUN_MODE}]" if TEST_MODE else ""))
+ax.set_title("ADC Noise Spectrometer" + ("  [TEST MODE]" if TEST_MODE else ""))
 ax.set_xlabel("Frequency (Hz)")
 ax.set_ylabel("Amplitude Spectral Density (V/√Hz)")  # Retained ASD label
 ax.set_xscale("log")
@@ -281,7 +255,7 @@ stats_text = ax.text(
 control_text = ax.text(
     0.02,
     0.98,
-    "Keys: s = save noise ASD, p = compare, x = clear saved",
+    "Keys: s = save, p = compare, x = clear saved",
     transform=ax.transAxes,
     fontsize=9,
     va="top",
@@ -297,7 +271,7 @@ plt.show(block=False)
 try:
     while True:
 
-        if RUN_MODE == "SYNTH_TEST":
+        if TEST_MODE:
             blocks = generate_low_high_blocks()
         else:
             blocks = read_low_high_blocks()
@@ -412,7 +386,7 @@ try:
             & (stitched_freqs > STATS_MIN_HZ)
             & (stitched_freqs < STATS_MAX_HZ)
         )
-        if DO_NOISE_STATS:
+        if not TEST_MODE:
             stats_amps_V = stitched_amps[valid]
 
             if len(stats_amps_V) > 0:
@@ -444,7 +418,7 @@ try:
 
         ax.set_ylim(Y_MIN, Y_MAX)
 
-        if DO_ERROR_ANALYSIS:
+        if TEST_MODE:
 
             peak_band = None
 
@@ -499,25 +473,25 @@ try:
                 "gain_dB": float(gain_dB),
             }
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            filename = f"{INSTRUMENT_LABEL}_{TEST_SIGNAL_FREQ_HZ:.3f}Hz_{timestamp}.json"
+            if TEST_MODE:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                filename = f"{INSTRUMENT_LABEL}_{TEST_SIGNAL_FREQ_HZ:.3f}Hz_{timestamp}.json"
 
-            # Save magnitude in V for sine-wave accuracy mode.
-            # The test_results contain the gain/frequency error data.
-            save_json(
-                filename=filename,
-                instrument=INSTRUMENT_LABEL,
-                stitched_freqs=latest_stitched_freqs,
-                stitched_amps_V=latest_stitched_mags,
-                sample_rate_Hz=RAW_SAMPLE_RATE_HZ,
-                samples=SAMPLES,
-                plot_config=PLOT_CONFIG,
-                stats_min_Hz=STATS_MIN_HZ,
-                stats_max_Hz=STATS_MAX_HZ,
-                test_mode=True,
-                test_input_freq_Hz=TEST_SIGNAL_FREQ_HZ,
-                test_results=test_results,
-            )
+                # Saves standard pure amplitude values to JSON file
+                save_json(
+                    filename=filename,
+                    instrument=INSTRUMENT_LABEL,
+                    stitched_freqs=latest_stitched_freqs,
+                    stitched_amps_V=latest_stitched_mags,  # Exports magnitude
+                    sample_rate_Hz=RAW_SAMPLE_RATE_HZ,
+                    samples=SAMPLES,
+                    plot_config=PLOT_CONFIG,
+                    stats_min_Hz=STATS_MIN_HZ,
+                    stats_max_Hz=STATS_MAX_HZ,
+                    test_mode=True,
+                    test_input_freq_Hz=TEST_SIGNAL_FREQ_HZ,
+                    test_results=test_results,
+                )
 
             stats_str = (
                 f"Sweep point:      {sweep_index + 1}/{len(TEST_FREQS_HZ)}\n"
@@ -539,8 +513,8 @@ try:
         fig.canvas.flush_events()
         plt.pause(0.01)
 
-        if pending_action == "save" and RUN_MODE == "LIVE_NOISE":
-            if latest_stitched_freqs is not None and latest_stitched_amps is not None:
+        if pending_action == "save" and not TEST_MODE:
+            if latest_stitched_freqs is not None and latest_stitched_mags is not None:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = f"{INSTRUMENT_LABEL}_{timestamp}.json"
 
@@ -548,15 +522,15 @@ try:
                     filename=filename,
                     instrument=INSTRUMENT_LABEL,
                     stitched_freqs=latest_stitched_freqs,
-                    stitched_amps_V=latest_stitched_amps,  # Save ASD for noise-floor comparison
+                    stitched_amps_V=latest_stitched_mags,  # Save Amplitude for comparison
                     sample_rate_Hz=RAW_SAMPLE_RATE_HZ,
                     samples=SAMPLES,
                     plot_config=PLOT_CONFIG,
                     stats_min_Hz=STATS_MIN_HZ,
                     stats_max_Hz=STATS_MAX_HZ,
-                    test_mode=False,
-                    test_input_freq_Hz=None,
-                    test_results=None,
+                    test_mode=TEST_MODE,
+                    test_input_freq_Hz=TEST_SIGNAL_FREQ_HZ if TEST_MODE else None,
+                    test_results=test_results if TEST_MODE else None,
                 )
             else:
                 print("No stitched data available to save yet.")
@@ -565,15 +539,14 @@ try:
 
         elif pending_action == "compare":
             compare_saved_measurements()
-            if DO_ERROR_ANALYSIS:
-                plot_test_errors()
+            plot_test_errors()
             pending_action = None
 
         elif pending_action == "clear":
             clear_saved_measurements()
             pending_action = None
 
-        if DO_ERROR_ANALYSIS:
+        if TEST_MODE:
             sweep_index += 1
 
             if sweep_index >= len(TEST_FREQS_HZ):
@@ -582,21 +555,20 @@ try:
 
                 plt.ioff()
 
+                compare_saved_measurements()
                 plot_test_errors()
 
                 plt.show()
 
                 break
 
-        if DO_ERROR_ANALYSIS:
-            TEST_SIGNAL_FREQ_HZ = TEST_FREQS_HZ[sweep_index]
-
+        TEST_SIGNAL_FREQ_HZ = TEST_FREQS_HZ[sweep_index]
         time.sleep(0.05)
 
 except KeyboardInterrupt:
     print("Stopped by user.")
 
 finally:
-    if USE_SERIAL:
+    if not TEST_MODE:
         ser.close()
         print("Serial closed.")
