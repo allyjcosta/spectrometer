@@ -1,0 +1,29 @@
+# main.py
+# command/menu loop only
+
+# config.py
+# constants, bands, test frequencies
+
+# serial_io.py
+# Arduino communication
+
+# signal_source.py
+# synthetic sine generation
+
+# fft_analysis.py
+# FFT math and test measurements
+
+# stitching.py
+# band stitching
+
+# storage.py
+# JSON save/load/clear/discover
+
+# plot_live.py
+# live plot
+
+# plot_compare.py
+# compare, error plot, THD plot
+
+# sweep_runner.py
+# synthetic sweep and hardware manual sweep
