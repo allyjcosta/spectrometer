@@ -69,7 +69,6 @@ def read_band_blocks(ser, band_order):
 
         if band_name in band_order:
             blocks[band_name] = data
-            print(f"Read {band_name}: {len(data)} samples")
         else:
             print("Ignoring unknown band:", band_name)
 

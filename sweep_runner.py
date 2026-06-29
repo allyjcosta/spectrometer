@@ -14,10 +14,10 @@ from config import (
 from signal_source import generate_synthetic_blocks
 from spectrum_processing import process_blocks
 from FFT_analysis import calculate_test_results
-from storage import save_measurement, clear_saved_measurements, calculate_noise_stats
-from plot_compare import compare_saved_measurements, plot_test_errors, plot_thd2
+from storage import save_measurement, calculate_noise_stats
 from serial_io import open_serial, request_raw_sample_rate, read_band_blocks
 from plot_live import create_live_plot, update_live_plot
+from live_input_handler import create_input_handler
 
 
 def fmt(value, digits=3):
@@ -25,14 +25,13 @@ def fmt(value, digits=3):
         return "N/A"
     return f"{value:.{digits}f}"
 
+
 def run_synthetic_sweep():
     instrument = "TEST_MODE"
     measurement_type = "synthetic_test"
 
     raw_sample_rate_hz = 100000.0
     bands = make_bands(raw_sample_rate_hz)
-
-    clear_saved_measurements()
 
     for index, target_freq_hz in enumerate(TEST_FREQS_HZ):
         print()
@@ -93,105 +92,9 @@ def run_synthetic_sweep():
     print()
     print("Synthetic sweep complete.")
 
-    compare_saved_measurements()
-    plot_test_errors()
-
-
-def run_hardware_sweep():
-    instrument = "SAMD21"
-    measurement_type = "hardware_test"
-
-    ser = open_serial(PORT, BAUD)
-
-    try:
-        raw_sample_rate_hz = request_raw_sample_rate(ser)
-        bands = make_bands(raw_sample_rate_hz)
-
-        clear_saved_measurements()
-
-        sweep_index = 0
-
-        while sweep_index < len(TEST_FREQS_HZ):
-            target_freq_hz = TEST_FREQS_HZ[sweep_index]
-
-            print()
-            print(f"Hardware sweep point {sweep_index + 1}/{len(TEST_FREQS_HZ)}")
-            print(f"Set generator to {target_freq_hz:.3f} Hz")
-            print(f"Target amplitude: {TEST_SIGNAL_AMP_V:.6g} V")
-
-            choice = input("Enter = capture/save, r = redo, q = quit: ").strip().lower()
-
-            if choice == "q":
-                break
-
-            if choice == "r":
-                print("Redoing same sweep point.")
-                continue
-
-            blocks = read_band_blocks(ser, BAND_ORDER)
-
-            spectrum = process_blocks(
-                blocks=blocks,
-                bands=bands,
-                band_order=BAND_ORDER,
-                samples=SAMPLES,
-            )
-
-            if spectrum is None:
-                print("No valid spectrum generated. Redo this point.")
-                continue
-
-            if target_freq_hz >= bands["HIGH"]["stitch_min"]:
-                active_fmin = bands["HIGH"]["f_min_Hz"]
-            elif target_freq_hz >= bands["MID"]["stitch_min"]:
-                active_fmin = bands["MID"]["f_min_Hz"]
-            else:
-                active_fmin = bands["LOW"]["f_min_Hz"]
-
-
-            test = calculate_test_results(
-                freqs_hz=spectrum["freqs_Hz"],
-                mag_v=spectrum["mag_V"],
-                target_freq_hz=target_freq_hz,
-                target_amp_v=TEST_SIGNAL_AMP_V,
-                fmin_hz=active_fmin,
-            )
-
-            print(
-                f"Measured: {fmt(test['measured_freq_Hz'])} Hz, "
-                f"Gain error: {fmt(test['gain_dB'])} dB, "
-                f"Freq error: {fmt(test['freq_error_bins'])} bins, "
-                f"THD2: {fmt(test['thd2_percent'])}%"
-            )
-
-            save_measurement(
-                instrument=instrument,
-                measurement_type=measurement_type,
-                freqs_hz=spectrum["freqs_Hz"],
-                mag_v=spectrum["mag_V"],
-                asd_v_per_sqrt_hz=spectrum["asd_V_per_sqrtHz"],
-                sample_rate_hz=raw_sample_rate_hz,
-                samples=SAMPLES,
-                plot_config=PLOT_CONFIG,
-                stats_min_hz=STATS_MIN_HZ,
-                stats_max_hz=STATS_MAX_HZ,
-                test=test,
-            )
-
-            sweep_index += 1
-
-        compare_saved_measurements()
-        plot_test_errors()
-        plot_thd2()
-
-    finally:
-        ser.close()
-        print("Serial closed.")
-
 
 def run_live_mode():
-    instrument = "SAMD21"
-
+    input_handler = None
     ser = open_serial(PORT, BAUD)
 
     try:
@@ -204,11 +107,12 @@ def run_live_mode():
             raw_sample_rate_hz=raw_sample_rate_hz,
             title="Live Stitched ASD ADC Noise Spectrometer",
         )
+        input_handler = create_input_handler()
 
         print("Live mode running.")
-        print("Close plot window or press Ctrl+C to stop.")
+        print("Close the plot window, enter q, or press Ctrl+C to stop.")
 
-        while True:
+        while plot["running"]:
             blocks = read_band_blocks(ser, BAND_ORDER)
 
             spectrum = process_blocks(
@@ -218,29 +122,41 @@ def run_live_mode():
                 samples=SAMPLES,
             )
 
-            if spectrum is None:
-                continue
+            if spectrum is not None:
+                stats = calculate_noise_stats(
+                    freqs_hz=spectrum["freqs_Hz"],
+                    asd_v_per_sqrt_hz=spectrum["asd_V_per_sqrtHz"],
+                    stats_min_hz=STATS_MIN_HZ,
+                    stats_max_hz=STATS_MAX_HZ,
+                )
 
-            stats = calculate_noise_stats(
-                freqs_hz=spectrum["freqs_Hz"],
-                asd_v_per_sqrt_hz=spectrum["asd_V_per_sqrtHz"],
+                input_handler.update_spectrum(spectrum)
+                update_live_plot(
+                    plot=plot,
+                    freqs_hz=spectrum["freqs_Hz"],
+                    asd_v_per_sqrt_hz=spectrum["asd_V_per_sqrtHz"],
+                    stats=stats,
+                    y_min=PLOT_CONFIG["y_min"],
+                    y_max=PLOT_CONFIG["y_max"],
+                )
+
+            should_quit = input_handler.process_commands(
+                instrument="SAMD21",
+                sample_rate_hz=raw_sample_rate_hz,
+                samples=SAMPLES,
+                plot_config=PLOT_CONFIG,
                 stats_min_hz=STATS_MIN_HZ,
                 stats_max_hz=STATS_MAX_HZ,
             )
-
-            update_live_plot(
-                plot=plot,
-                freqs_hz=spectrum["freqs_Hz"],
-                asd_v_per_sqrt_hz=spectrum["asd_V_per_sqrtHz"],
-                stats=stats,
-                y_min=PLOT_CONFIG["y_min"],
-                y_max=PLOT_CONFIG["y_max"],
-            )
+            if should_quit:
+                break
 
     except KeyboardInterrupt:
         print()
         print("Live mode stopped.")
 
     finally:
+        if input_handler is not None:
+            input_handler.stop()
         ser.close()
         print("Serial closed.")

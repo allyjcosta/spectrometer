@@ -7,6 +7,17 @@ def create_live_plot(y_min, y_max, raw_sample_rate_hz, title="ADC Noise Spectrom
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
+    plot = {
+        "fig": fig,
+        "ax": ax,
+        "running": True,
+    }
+
+    def on_close(_event):
+        plot["running"] = False
+
+    fig.canvas.mpl_connect("close_event", on_close)
+
     line, = ax.plot([], [], linewidth=0.8, label="Live ASD")
 
     median_line = ax.axhline(
@@ -14,7 +25,7 @@ def create_live_plot(y_min, y_max, raw_sample_rate_hz, title="ADC Noise Spectrom
         linestyle="--",
         linewidth=1.2,
         alpha=0.8,
-        label="Median",
+        label="Median (ASD)",
     )
 
     stats_text = ax.text(
@@ -31,9 +42,13 @@ def create_live_plot(y_min, y_max, raw_sample_rate_hz, title="ADC Noise Spectrom
     control_text = ax.text(
         0.02,
         0.98,
-        "Keys: s = save, p = compare, q = quit",
+        (
+            "Live menu (enter in terminal)\n"
+            "1 Save   2 List   3 Compare   4 Errors\n"
+            "5 THD2   6 Amplitude   7 Clear   q Quit"
+        ),
         transform=ax.transAxes,
-        fontsize=9,
+        fontsize=8,
         va="top",
         ha="left",
         bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
@@ -52,14 +67,13 @@ def create_live_plot(y_min, y_max, raw_sample_rate_hz, title="ADC Noise Spectrom
     plt.tight_layout()
     plt.show(block=False)
 
-    return {
-        "fig": fig,
-        "ax": ax,
+    plot.update({
         "line": line,
         "median_line": median_line,
         "stats_text": stats_text,
         "control_text": control_text,
-    }
+    })
+    return plot
 
 
 def update_live_plot(plot, freqs_hz, asd_v_per_sqrt_hz, stats=None, y_min=None, y_max=None):
@@ -96,7 +110,7 @@ def update_live_plot(plot, freqs_hz, asd_v_per_sqrt_hz, stats=None, y_min=None, 
         median_nv = stats.get("median_nV_per_sqrtHz")
 
         plot["stats_text"].set_text(
-            f"Median: {median_nv:.2f} nV/√Hz\n"
+            f"Median (ASD): {median_nv:.2f} nV/√Hz\n"
         )
 
     ax.legend(fontsize=8)

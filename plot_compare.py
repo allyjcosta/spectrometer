@@ -16,8 +16,9 @@ def compare_saved_measurements(files=None):
     fig, ax_dict = plt.subplot_mosaic(
         [["asd", "legend"],
          ["mag", "legend"]],
-        figsize=(14, 8),
-        gridspec_kw={"width_ratios": [1, 0.16], "wspace": 0.05}
+        figsize=(15, 8),
+        gridspec_kw={"width_ratios": [1, 0.32], "wspace": 0.05},
+        constrained_layout=True,
     )
     
     ax_asd = ax_dict["asd"]
@@ -51,20 +52,12 @@ def compare_saved_measurements(files=None):
             & (mag > 0)
         )
 
-        label = measurement.get("instrument", filename)
-
-        test = measurement.get("test")
-        if test is None:
-            test = measurement.get("test_results")
-
-        if test is not None:
-            input_freq = (
-                test.get("input_freq_Hz")
-                or measurement.get("test_input_freq_Hz")
-                or test.get("target_freq_Hz")
-            )
-            if input_freq is not None:
-                label = f"{float(input_freq):.3f} Hz"
+        instrument = measurement.get("instrument", "Unknown instrument")
+        median_nv = (measurement.get("stats") or {}).get("median_nV_per_sqrtHz")
+        if median_nv is None:
+            label = f"{instrument} — Median (ASD): N/A"
+        else:
+            label = f"{instrument} — Median (ASD): {float(median_nv):.2f} nV/√Hz"
 
         line, = ax_asd.plot(
             freqs[valid_asd],
@@ -109,7 +102,6 @@ def compare_saved_measurements(files=None):
             frameon=True,
         )
 
-    plt.tight_layout()
     plt.show()
 
 
@@ -122,7 +114,7 @@ def plot_test_errors(files=None):
         measurement = load_measurement(filename)
         measurement_type = measurement.get("measurement_type")
         old_test_mode = bool(measurement.get("test_mode", False))
-        new_test_mode = measurement_type in ("synthetic_test", "hardware_test")
+        new_test_mode = measurement_type in ("synthetic_test", "live_test")
 
         if not old_test_mode and not new_test_mode:
             continue
@@ -288,7 +280,7 @@ def plot_thd2(files=None):
     for filename in files:
         measurement = load_measurement(filename)
 
-        if measurement.get("measurement_type") != "hardware_test":
+        if measurement.get("measurement_type") not in ("synthetic_test", "live_test"):
             continue
 
         test = measurement.get("test")
@@ -308,7 +300,7 @@ def plot_thd2(files=None):
         })
 
     if len(rows) == 0:
-        print("No valid hardware THD2 data found.")
+        print("No valid THD2 data found.")
         return
 
     rows = sorted(rows, key=lambda r: r["target_freq_Hz"])
@@ -329,7 +321,7 @@ def plot_thd2(files=None):
 
     ax.set_xlabel("Target Frequency (Hz)")
     ax.set_ylabel("THD2 (%)")
-    ax.set_title("Hardware Second Harmonic Distortion")
+    ax.set_title("Second Harmonic Distortion")
     ax.grid(True, which="both", alpha=0.3)
     ax.legend(loc="best")
 
@@ -348,7 +340,7 @@ def plot_amplitude_comparison(files=None):
 
         measurement_type = measurement.get("measurement_type")
 
-        if measurement_type not in ("synthetic_test", "hardware_test"):
+        if measurement_type not in ("synthetic_test", "live_test"):
             continue
 
         test = measurement.get("test")
@@ -387,7 +379,7 @@ def plot_amplitude_comparison(files=None):
         sharex=True,
     )
 
-    for measurement_type in ("synthetic_test", "hardware_test"):
+    for measurement_type in ("synthetic_test", "live_test"):
         subset = [r for r in rows if r["measurement_type"] == measurement_type]
 
         if not subset:
@@ -403,7 +395,9 @@ def plot_amplitude_comparison(files=None):
             target_freqs,
             measured_amps,
             marker="o",
+            linestyle = None,
             linewidth=1.5,
+            color = "green",
             label=f"{label} measured",
         )
 
@@ -411,7 +405,9 @@ def plot_amplitude_comparison(files=None):
             target_freqs,
             20 * np.log10(measured_amps / target_amps),
             marker="o",
+            linestyle = None,
             linewidth=1.5,
+            color = "green",
             label=f"{label} gain error",
         )
 
@@ -426,6 +422,7 @@ def plot_amplitude_comparison(files=None):
         all_targets[order],
         linestyle="--",
         linewidth=1.2,
+        color = "lime",
         label="ideal target",
     )
 

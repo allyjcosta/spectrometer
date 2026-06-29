@@ -1,4 +1,4 @@
-from sweep_runner import run_live_mode, run_hardware_sweep, run_synthetic_sweep
+from sweep_runner import run_live_mode, run_synthetic_sweep
 from plot_compare import (
     compare_saved_measurements,
     plot_test_errors,
@@ -13,13 +13,12 @@ def main():
         print()
         print("ADC Spectrometer")
         print("1 = Live ASD mode")
-        print("2 = Hardware test sweep")
-        print("3 = Synthetic test sweep")
-        print("4 = Compare saved measurements")
-        print("5 = Plot test errors")
-        print("6 = Plot THD2")
-        print("7 = Plot amplitude comparison")
-        print("8 = Clear saved measurements")
+        print("2 = Synthetic test sweep")
+        print("3 = Compare saved measurements")
+        print("4 = Plot test errors")
+        print("5 = Plot THD2")
+        print("6 = Plot amplitude comparison")
+        print("7 = Clear saved measurements")
         print("q = Quit")
 
         choice = input("> ").strip().lower()
@@ -28,27 +27,24 @@ def main():
             run_live_mode()
 
         elif choice == "2":
-            run_hardware_sweep()
-            plot_test_errors()
-            plot_thd2()
-
-        elif choice == "3":
             clear_saved_measurements()
             run_synthetic_sweep()
-
-        elif choice == "4":
             compare_saved_measurements()
-
-        elif choice == "5":
             plot_test_errors()
 
-        elif choice == "6":
+        elif choice == "3":
+            compare_saved_measurements()
+
+        elif choice == "4":
+            plot_test_errors()
+
+        elif choice == "5":
             plot_thd2()
 
-        elif choice == "7":
+        elif choice == "6":
             plot_amplitude_comparison()
 
-        elif choice == "8":
+        elif choice == "7":
             clear_saved_measurements()
 
         elif choice == "q":

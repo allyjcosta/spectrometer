@@ -64,6 +64,15 @@ def find_test_peak(freqs_hz, mag_v, target_freq_hz, search_bins=5):
         "peak_index": int(local_peak_idx),
     }
 
+
+def find_global_peak(freqs_hz, mag_v):
+    peak_index = int(np.argmax(mag_v))
+    return {
+        "measured_freq_Hz": float(freqs_hz[peak_index]),
+        "measured_amp_V": float(mag_v[peak_index]),
+        "peak_index": peak_index,
+    }
+
 def find_second_harmonic(freqs_hz, mag_v, target_freq_hz, search_bins=5):
     second_harmonic_hz = 2.0 * target_freq_hz
 
@@ -93,14 +102,20 @@ def calculate_test_results(
     target_amp_v,
     fmin_hz,
     search_bins=5,
+    use_global_peak=False,
 ):
+    freqs_hz = np.asarray(freqs_hz, dtype=float)
+    mag_v = np.asarray(mag_v, dtype=float)
 
-    peak = find_test_peak(
-        freqs_hz=freqs_hz,
-        mag_v=mag_v,
-        target_freq_hz=target_freq_hz,
-        search_bins=search_bins,
-    )
+    if use_global_peak:
+        peak = find_global_peak(freqs_hz=freqs_hz, mag_v=mag_v)
+    else:
+        peak = find_test_peak(
+            freqs_hz=freqs_hz,
+            mag_v=mag_v,
+            target_freq_hz=target_freq_hz,
+            search_bins=search_bins,
+        )
 
     harmonic = find_second_harmonic(
         freqs_hz=freqs_hz,
