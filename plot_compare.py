@@ -118,10 +118,8 @@ def plot_test_errors(files=None):
         files = discover_measurements()
 
     rows = []
-
     for filename in files:
         measurement = load_measurement(filename)
-
         measurement_type = measurement.get("measurement_type")
         old_test_mode = bool(measurement.get("test_mode", False))
         new_test_mode = measurement_type in ("synthetic_test", "hardware_test")
@@ -129,10 +127,7 @@ def plot_test_errors(files=None):
         if not old_test_mode and not new_test_mode:
             continue
 
-        test = measurement.get("test")
-        if test is None:
-            test = measurement.get("test_results")
-
+        test = measurement.get("test") or measurement.get("test_results")
         if not test:
             continue
 
@@ -141,19 +136,12 @@ def plot_test_errors(files=None):
             or measurement.get("test_input_freq_Hz")
             or test.get("target_freq_Hz")
         )
-
         measured_freq_hz = test.get("measured_freq_Hz")
         freq_error_hz = test.get("freq_error_Hz")
         freq_error_bins = test.get("freq_error_bins")
         gain_db = test.get("gain_dB")
 
-        if (
-            input_freq_hz is None
-            or measured_freq_hz is None
-            or freq_error_hz is None
-            or freq_error_bins is None
-            or gain_db is None
-        ):
+        if any(v is None for v in [input_freq_hz, measured_freq_hz, freq_error_hz, freq_error_bins, gain_db]):
             continue
 
         rows.append({
@@ -182,89 +170,113 @@ def plot_test_errors(files=None):
     freq_median_abs_bins = np.median(np.abs(freq_errors_bins))
     freq_max_abs_bins = np.max(np.abs(freq_errors_bins))
 
-    stats_text = (
-        f"Test points: {len(rows)}\n"
-        f"Gain error RMS: {gain_rms_db:.3f} dB\n"
-        f"Gain error median |error|: {gain_median_abs_db:.3f} dB\n"
-        f"Gain error max |error|: {gain_max_abs_db:.3f} dB\n"
-        f"Freq error RMS: {freq_rms_bins:.3f} bins\n"
-        f"Freq error median |error|: {freq_median_abs_bins:.3f} bins\n"
-        f"Freq error max |error|: {freq_max_abs_bins:.3f} bins"
+    # Widen layout space for the sidebar text
+    fig, ax_dict = plt.subplot_mosaic(
+        [["gain_plot", "summary_panel"],
+         ["freq_plot", "points_panel"]],
+        figsize=(16, 9),
+        gridspec_kw={"width_ratios": [1, 0.52], "wspace": 0.25, "hspace": 0.22}
     )
 
-    fig, ax1 = plt.subplots(figsize=(12, 6))
-    ax1.set_xscale("log")
+    ax_gain = ax_dict["gain_plot"]
+    ax_freq = ax_dict["freq_plot"]
+    ax_sum = ax_dict["summary_panel"]
+    ax_pts = ax_dict["points_panel"]
 
-    # Changed: Added linestyle="none" to disconnect points
-    line1 = ax1.plot(
-        input_freqs,
-        gain_errors_db,
-        marker="o",
-        color="red",
-        linestyle="none",
-        label="Gain Error (dB)",
-    )[0]
+    ax_sum.axis("off")
+    ax_pts.axis("off")
 
-    ax1.axhline(0, color="black", linewidth=1.5)
-    ax1.axhline(0.5, linestyle="--", linewidth=1.0, alpha=0.4)
-    ax1.axhline(-0.5, linestyle="--", linewidth=1.0, alpha=0.4)
-
-    ax1.set_xlabel("Input Frequency (Hz)")
+    # --- TOP PLOT: GAIN ERROR ---
+    ax_gain.set_xscale("log")
+    ax_gain.plot(input_freqs, gain_errors_db, marker="o", color="crimson", linestyle="none")
+    ax_gain.axhline(0, color="black", linewidth=1.2)
+    ax_gain.axhline(0.5, linestyle="--", linewidth=0.8, color="gray", alpha=0.5)
+    ax_gain.axhline(-0.5, linestyle="--", linewidth=0.8, color="gray", alpha=0.5)
+    ax_gain.set_ylabel("Gain Error (dB)", color="crimson")
+    ax_gain.tick_params(axis='y', labelcolor="crimson")
     
+    max_gain_abs = max(np.max(np.abs(gain_errors_db)), 0.5)
+    ax_gain.set_ylim(-max_gain_abs * 1.2, max_gain_abs * 1.2)
+    ax_gain.set_title("Stitched Multi-Band Spectrometer Accuracy Profile", fontsize=12, fontweight='bold', pad=10)
+    ax_gain.grid(True, which="both", alpha=0.25)
+    plt.setp(ax_gain.get_xticklabels(), visible=False)
 
-    ax1.set_ylabel("Vertical Error: Gain Error (dB)", color="red")
-
+    # --- BOTTOM PLOT: FREQUENCY ERROR ---
+    ax_freq.set_xscale("log")
+    ax_freq.plot(input_freqs, freq_errors_bins, marker="D", color="royalblue", linestyle="none", markersize=5)
+    ax_freq.axhline(0, color="black", linewidth=1.2)
+    ax_freq.axhline(0.5, linestyle=":", linewidth=0.8, color="gray", alpha=0.5)
+    ax_freq.axhline(-0.5, linestyle=":", linewidth=0.8, color="gray", alpha=0.5)
+    ax_freq.set_xlabel("Test Tone Input Frequency (Hz)")
+    ax_freq.set_ylabel("Frequency Error (FFT Bins)", color="royalblue")
+    ax_freq.tick_params(axis='y', labelcolor="royalblue")
     
+    max_freq_abs = max(np.max(np.abs(freq_errors_bins)), 1.0)
+    ax_freq.set_ylim(-max_freq_abs * 1.2, max_freq_abs * 1.2)
+    ax_freq.grid(True, which="both", alpha=0.25)
 
-    ax1.tick_params(axis='y', labelcolor="red", color="red")
-    max_gain_abs = np.max(np.abs(gain_errors_db))
-    gain_limit = max(max_gain_abs * 1.15, 0.5)
-    ax1.set_ylim(-gain_limit, gain_limit)
+    ax_gain.sharex(ax_freq)
 
-    ax2 = ax1.twinx()
+    # --- UPPER TABLE: SYSTEM SUMMARY STATS ---
+    summary_content = [
+        ["Total Swept Points", f"{len(rows)}"],
+        ["Gain Error RMS", f"{gain_rms_db:.3f} dB"],
+        ["Gain Median |Err|", f"{gain_median_abs_db:.3f} dB"],
+        ["Gain Max |Err|", f"{gain_max_abs_db:.3f} dB"],
+        ["Freq Error RMS", f"{freq_rms_bins:.3f} bins"],
+        ["Freq Median |Err|", f"{freq_median_abs_bins:.3f} bins"],
+        ["Freq Max |Err|", f"{freq_max_abs_bins:.3f} bins"]
+    ]
 
-    line2 = ax2.plot(
-        input_freqs,
-        freq_errors_bins,
-        marker="s",
-        color="blue",
-        linestyle="none",
-        label="Frequency Error (FFT bins)",
-    )[0]
-
-    ax2.axhline(0, color="black", linewidth=1.5)
-    ax2.axhline(0.5, linestyle=":", linewidth=1.0, alpha=0.4)
-    ax2.axhline(-0.5, linestyle=":", linewidth=1.0, alpha=0.4)
-
-    ax2.set_ylabel("Horizontal Error: Frequency Error (FFT bins)", color="blue")
-
-    max_freq_abs = np.max(np.abs(freq_errors_bins))
-    freq_limit = max(max_freq_abs * 1.15, 1.0)
-    ax2.set_ylim(-freq_limit, freq_limit)
-    
-    ax2.tick_params(axis='y', labelcolor="blue", color="blue")
-
-    ax1.text(
-        0.02,
-        0.98,
-        stats_text,
-        transform=ax1.transAxes,
-        fontsize=9,
-        va="top",
-        ha="left",
-        bbox=dict(boxstyle="round", facecolor="white", alpha=0.85),
+    summary_table = ax_sum.table(
+        cellText=summary_content,
+        colLabels=["System Metric", "Performance Value"],
+        loc="center",
+        cellLoc="left"
     )
+    summary_table.auto_set_font_size(False)
+    summary_table.set_fontsize(8.5)
+    summary_table.scale(1.0, 1.3)
 
-    ax1.set_title("ADC Spectrometer Accuracy")
-    ax1.grid(True, which="both", alpha=0.3)
+    # --- LOWER TABLE: INDIVIDUAL SWEEP POINTS ---
+    points_headers = ["Target Freq", "Measured Freq", "Gain Error", "Freq Error"]
+    points_content = []
+    
 
-    ax1.legend(
-        [line1, line2],
-        ["Gain Error (dB)", "Frequency Error (FFT bins)"],
-        loc="upper right", # Shifted slightly so it won't crash into the floating text box
+    display_rows = rows
+
+
+    for r in display_rows:
+        points_content.append([
+            f"{r['input_freq_Hz']:.2f} Hz",
+            f"{r['measured_freq_Hz']:.2f} Hz",
+            f"{r['gain_dB']:.3f} dB",
+            f"{r['freq_error_bins']:.3f} bins"
+        ])
+
+    points_table = ax_pts.table(
+        cellText=points_content,
+        colLabels=points_headers,
+        loc="center",
+        cellLoc="left"
     )
+    points_table.auto_set_font_size(False)
+    points_table.set_fontsize(8)
+    points_table.scale(1.0, 1.1)
 
-    plt.tight_layout()
+    # Manual cell width expansion & formatting overrides to prevent cutoffs
+    for (row, col), cell in summary_table.get_celld().items():
+        cell.set_width(0.52) 
+        if row == 0:
+            cell.set_text_props(weight='bold', color='white')
+            cell.set_facecolor('#2C3E50')
+
+    for (row, col), cell in points_table.get_celld().items():
+        cell.set_width(0.28) # Added width column allocation space
+        if row == 0:
+            cell.set_text_props(weight='bold', color='white', fontsize=7.5)
+            cell.set_facecolor('#34495E')
+
     plt.show()
 
 def plot_thd2(files=None):

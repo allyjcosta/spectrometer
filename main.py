@@ -29,6 +29,8 @@ def main():
 
         elif choice == "2":
             run_hardware_sweep()
+            plot_test_errors()
+            plot_thd2()
 
         elif choice == "3":
             clear_saved_measurements()
