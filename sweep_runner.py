@@ -20,7 +20,6 @@ from serial_io import open_serial, request_raw_sample_rate, read_band_blocks
 from plot_live import create_live_plot, update_live_plot
 
 
-
 def fmt(value, digits=3):
     if value is None:
         return "N/A"
@@ -55,12 +54,19 @@ def run_synthetic_sweep():
             samples=SAMPLES,
         )
 
+        if target_freq_hz >= bands["HIGH"]["stitch_min"]:
+            active_fmin = bands["HIGH"]["f_min_Hz"]
+        elif target_freq_hz >= bands["MID"]["stitch_min"]:
+            active_fmin = bands["MID"]["f_min_Hz"]
+        else:
+            active_fmin = bands["LOW"]["f_min_Hz"]
+
         test = calculate_test_results(
             freqs_hz=spectrum["freqs_Hz"],
             mag_v=spectrum["mag_V"],
             target_freq_hz=target_freq_hz,
             target_amp_v=TEST_SIGNAL_AMP_V,
-            bin_width_hz= 1
+            fmin_hz=active_fmin
         )
 
         print(
@@ -135,12 +141,20 @@ def run_hardware_sweep():
                 print("No valid spectrum generated. Redo this point.")
                 continue
 
+            if target_freq_hz >= bands["HIGH"]["stitch_min"]:
+                active_fmin = bands["HIGH"]["f_min_Hz"]
+            elif target_freq_hz >= bands["MID"]["stitch_min"]:
+                active_fmin = bands["MID"]["f_min_Hz"]
+            else:
+                active_fmin = bands["LOW"]["f_min_Hz"]
+
+
             test = calculate_test_results(
                 freqs_hz=spectrum["freqs_Hz"],
                 mag_v=spectrum["mag_V"],
                 target_freq_hz=target_freq_hz,
                 target_amp_v=TEST_SIGNAL_AMP_V,
-                bin_width_hz=1,
+                fmin_hz=active_fmin,
             )
 
             print(

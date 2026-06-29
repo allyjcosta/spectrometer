@@ -31,6 +31,7 @@ def main():
             run_hardware_sweep()
 
         elif choice == "3":
+            clear_saved_measurements()
             run_synthetic_sweep()
 
         elif choice == "4":

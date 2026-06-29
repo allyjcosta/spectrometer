@@ -17,14 +17,6 @@ def create_live_plot(y_min, y_max, raw_sample_rate_hz, title="ADC Noise Spectrom
         label="Median",
     )
 
-    floor_line = ax.axhline(
-        y=y_min,
-        linestyle=":",
-        linewidth=1.2,
-        alpha=0.8,
-        label="90% Floor",
-    )
-
     stats_text = ax.text(
         0.02,
         0.02,
@@ -65,7 +57,6 @@ def create_live_plot(y_min, y_max, raw_sample_rate_hz, title="ADC Noise Spectrom
         "ax": ax,
         "line": line,
         "median_line": median_line,
-        "floor_line": floor_line,
         "stats_text": stats_text,
         "control_text": control_text,
     }
@@ -98,20 +89,14 @@ def update_live_plot(plot, freqs_hz, asd_v_per_sqrt_hz, stats=None, y_min=None, 
 
     if stats is not None:
         median_v = stats.get("median_V_per_sqrtHz")
-        floor90_v = stats.get("floor90_V_per_sqrtHz")
 
         if median_v is not None:
             plot["median_line"].set_ydata([median_v, median_v])
 
-        if floor90_v is not None:
-            plot["floor_line"].set_ydata([floor90_v, floor90_v])
-
         median_nv = stats.get("median_nV_per_sqrtHz")
-        floor90_nv = stats.get("floor90_nV_per_sqrtHz")
 
         plot["stats_text"].set_text(
             f"Median: {median_nv:.2f} nV/√Hz\n"
-            f"90% Floor: {floor90_nv:.2f} nV/√Hz"
         )
 
     ax.legend(fontsize=8)

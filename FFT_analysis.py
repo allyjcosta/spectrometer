@@ -91,9 +91,9 @@ def calculate_test_results(
     mag_v,
     target_freq_hz,
     target_amp_v,
-    bin_width_hz,
+    fmin_hz,
     search_bins=5,
-    ):
+):
 
     peak = find_test_peak(
         freqs_hz=freqs_hz,
@@ -112,8 +112,9 @@ def calculate_test_results(
     measured_freq_hz = peak["measured_freq_Hz"]
     measured_amp_v = peak["measured_amp_V"]
 
+    # Calculate frequency errors purely based on the local band's fmin_hz
     freq_error_hz = measured_freq_hz - target_freq_hz
-    freq_error_bins = freq_error_hz / bin_width_hz
+    freq_error_bins = freq_error_hz / fmin_hz
 
     gain = measured_amp_v / target_amp_v if target_amp_v > 0 else None
 
