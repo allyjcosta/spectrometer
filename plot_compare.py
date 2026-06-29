@@ -132,6 +132,7 @@ def plot_test_errors(files=None):
         freq_error_hz = test.get("freq_error_Hz")
         freq_error_bins = test.get("freq_error_bins")
         gain_db = test.get("gain_dB")
+        leakage_db = test.get("spectral_leakage_dB")
 
         if any(v is None for v in [input_freq_hz, measured_freq_hz, freq_error_hz, freq_error_bins, gain_db]):
             continue
@@ -142,6 +143,9 @@ def plot_test_errors(files=None):
             "freq_error_Hz": float(freq_error_hz),
             "freq_error_bins": float(freq_error_bins),
             "gain_dB": float(gain_db),
+            "spectral_leakage_dB": (
+                None if leakage_db is None else float(leakage_db)
+            ),
         })
 
     if len(rows) == 0:
@@ -162,12 +166,18 @@ def plot_test_errors(files=None):
     freq_median_abs_bins = np.median(np.abs(freq_errors_bins))
     freq_max_abs_bins = np.max(np.abs(freq_errors_bins))
 
+    leakage_values_db = np.array([
+        row["spectral_leakage_dB"]
+        for row in rows
+        if row["spectral_leakage_dB"] is not None
+    ])
+
     # Widen layout space for the sidebar text
     fig, ax_dict = plt.subplot_mosaic(
         [["gain_plot", "summary_panel"],
          ["freq_plot", "points_panel"]],
-        figsize=(16, 9),
-        gridspec_kw={"width_ratios": [1, 0.52], "wspace": 0.25, "hspace": 0.22}
+        figsize=(17, 10),
+        gridspec_kw={"width_ratios": [1, 0.62], "wspace": 0.25, "hspace": 0.22}
     )
 
     ax_gain = ax_dict["gain_plot"]
@@ -220,6 +230,12 @@ def plot_test_errors(files=None):
         ["Freq Max |Err|", f"{freq_max_abs_bins:.3f} bins"]
     ]
 
+    if len(leakage_values_db) > 0:
+        summary_content.extend([
+            ["Leakage Median", f"{np.median(leakage_values_db):.3f} dB"],
+            ["Leakage Worst", f"{np.max(leakage_values_db):.3f} dB"],
+        ])
+
     summary_table = ax_sum.table(
         cellText=summary_content,
         colLabels=["System Metric", "Performance Value"],
@@ -231,7 +247,13 @@ def plot_test_errors(files=None):
     summary_table.scale(1.0, 1.3)
 
     # --- LOWER TABLE: INDIVIDUAL SWEEP POINTS ---
-    points_headers = ["Target Freq", "Measured Freq", "Gain Error", "Freq Error"]
+    points_headers = [
+        "Target\nFrequency",
+        "Measured\nFrequency",
+        "Gain\nError",
+        "Frequency\nError",
+        "Leakage",
+    ]
     points_content = []
     
 
@@ -239,11 +261,13 @@ def plot_test_errors(files=None):
 
 
     for r in display_rows:
+        leakage_db = r["spectral_leakage_dB"]
         points_content.append([
             f"{r['input_freq_Hz']:.2f} Hz",
             f"{r['measured_freq_Hz']:.2f} Hz",
             f"{r['gain_dB']:.3f} dB",
-            f"{r['freq_error_bins']:.3f} bins"
+            f"{r['freq_error_bins']:.3f} bins",
+            "N/A" if leakage_db is None else f"{leakage_db:.3f} dB",
         ])
 
     points_table = ax_pts.table(
@@ -254,7 +278,7 @@ def plot_test_errors(files=None):
     )
     points_table.auto_set_font_size(False)
     points_table.set_fontsize(8)
-    points_table.scale(1.0, 1.1)
+    points_table.scale(1.0, 1.08)
 
     # Manual cell width expansion & formatting overrides to prevent cutoffs
     for (row, col), cell in summary_table.get_celld().items():
@@ -264,9 +288,10 @@ def plot_test_errors(files=None):
             cell.set_facecolor('#2C3E50')
 
     for (row, col), cell in points_table.get_celld().items():
-        cell.set_width(0.28) # Added width column allocation space
+        cell.set_width(0.20)
         if row == 0:
-            cell.set_text_props(weight='bold', color='white', fontsize=7.5)
+            cell.set_height(cell.get_height() * 1.55)
+            cell.set_text_props(weight='bold', color='white', fontsize=7)
             cell.set_facecolor('#34495E')
 
     plt.show()

@@ -13,7 +13,7 @@ from config import (
 
 from signal_source import generate_synthetic_blocks
 from spectrum_processing import process_blocks
-from FFT_analysis import calculate_test_results
+from FFT_analysis import calculate_spectral_leakage, calculate_test_results
 from storage import save_measurement, calculate_noise_stats
 from serial_io import open_serial, request_raw_sample_rate, read_band_blocks
 from plot_live import create_live_plot, update_live_plot
@@ -54,10 +54,13 @@ def run_synthetic_sweep():
         )
 
         if target_freq_hz >= bands["HIGH"]["stitch_min"]:
+            active_band_name = "HIGH"
             active_fmin = bands["HIGH"]["f_min_Hz"]
         elif target_freq_hz >= bands["MID"]["stitch_min"]:
+            active_band_name = "MID"
             active_fmin = bands["MID"]["f_min_Hz"]
         else:
+            active_band_name = "LOW"
             active_fmin = bands["LOW"]["f_min_Hz"]
 
         test = calculate_test_results(
@@ -68,11 +71,21 @@ def run_synthetic_sweep():
             fmin_hz=active_fmin
         )
 
+        active_band = spectrum["band_results_mag"][active_band_name]
+        test.update(
+            calculate_spectral_leakage(
+                freqs_hz=active_band["freqs"],
+                mag_v=active_band["amps_V"],
+                target_freq_hz=target_freq_hz,
+            )
+        )
+
         print(
             f"Measured: {fmt(test['measured_freq_Hz'])} Hz, "
             f"Gain error: {fmt(test['gain_dB'])} dB, "
             f"Freq error: {fmt(test['freq_error_bins'])} bins, "
-            f"THD2: {fmt(test['thd2_percent'])}%"
+            f"THD2: {fmt(test['thd2_percent'])}%, "
+            f"Leakage: {fmt(test['spectral_leakage_dB'])} dB"
         )
 
         save_measurement(

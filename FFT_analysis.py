@@ -73,6 +73,65 @@ def find_global_peak(freqs_hz, mag_v):
         "peak_index": peak_index,
     }
 
+
+def calculate_spectral_leakage(
+    freqs_hz,
+    mag_v,
+    target_freq_hz,
+    main_lobe_half_width_bins=4,
+):
+    """Measure power outside a Blackman-Harris fundamental main lobe."""
+    freqs_hz = np.asarray(freqs_hz, dtype=float)
+    mag_v = np.asarray(mag_v, dtype=float)
+
+    valid = np.isfinite(freqs_hz) & np.isfinite(mag_v) & (mag_v >= 0)
+    freqs_hz = freqs_hz[valid]
+    mag_v = mag_v[valid]
+
+    if len(freqs_hz) == 0:
+        return {
+            "spectral_leakage_ratio": None,
+            "spectral_leakage_percent": None,
+            "spectral_leakage_dB": None,
+        }
+
+    peak = find_test_peak(
+        freqs_hz=freqs_hz,
+        mag_v=mag_v,
+        target_freq_hz=target_freq_hz,
+    )
+    peak_index = peak["peak_index"]
+    main_lo = max(0, peak_index - main_lobe_half_width_bins)
+    main_hi = min(len(mag_v), peak_index + main_lobe_half_width_bins + 1)
+
+    bin_power = mag_v ** 2
+    fundamental_power = float(np.sum(bin_power[main_lo:main_hi]))
+    total_power = float(np.sum(bin_power))
+    leakage_power = max(0.0, total_power - fundamental_power)
+
+    if fundamental_power <= 0:
+        leakage_ratio = None
+        leakage_db = None
+    else:
+        leakage_ratio = leakage_power / fundamental_power
+        leakage_db = (
+            None
+            if leakage_ratio <= 0
+            else float(10.0 * np.log10(leakage_ratio))
+        )
+
+    return {
+        "spectral_leakage_ratio": (
+            None if leakage_ratio is None else float(leakage_ratio)
+        ),
+        "spectral_leakage_percent": (
+            None if leakage_ratio is None else float(100.0 * leakage_ratio)
+        ),
+        "spectral_leakage_dB": leakage_db,
+        "leakage_main_lobe_half_width_bins": int(main_lobe_half_width_bins),
+    }
+
+
 def find_second_harmonic(freqs_hz, mag_v, target_freq_hz, search_bins=5):
     second_harmonic_hz = 2.0 * target_freq_hz
 
