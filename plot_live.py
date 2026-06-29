@@ -39,21 +39,6 @@ def create_live_plot(y_min, y_max, raw_sample_rate_hz, title="ADC Noise Spectrom
         bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
     )
 
-    control_text = ax.text(
-        0.02,
-        0.98,
-        (
-            "Live menu (enter in terminal)\n"
-            "1 Save   2 List   3 Compare   4 Errors\n"
-            "5 THD2   6 Amplitude   7 Clear   q Quit"
-        ),
-        transform=ax.transAxes,
-        fontsize=8,
-        va="top",
-        ha="left",
-        bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
-    )
-
     ax.set_title(title)
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("Amplitude Spectral Density (V/√Hz)")
@@ -71,7 +56,6 @@ def create_live_plot(y_min, y_max, raw_sample_rate_hz, title="ADC Noise Spectrom
         "line": line,
         "median_line": median_line,
         "stats_text": stats_text,
-        "control_text": control_text,
     })
     return plot
 
