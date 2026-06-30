@@ -1,3 +1,7 @@
+from concurrent.futures import ThreadPoolExecutor
+
+import matplotlib.pyplot as plt
+
 from config import (
     SAMPLES,
     TEST_FREQS_HZ,
@@ -125,44 +129,70 @@ def run_live_mode():
         print("Live mode running.")
         print("Close the plot window, enter q, or press Ctrl+C to stop.")
 
-        while plot["running"]:
-            blocks = read_band_blocks(ser, BAND_ORDER)
+        stop_requested = False
 
-            spectrum = process_blocks(
-                blocks=blocks,
-                bands=bands,
-                band_order=BAND_ORDER,
-                samples=SAMPLES,
-            )
+        with ThreadPoolExecutor(max_workers=1) as acquisition_executor:
+            while plot["running"] and not stop_requested:
+                capture = acquisition_executor.submit(
+                    read_band_blocks,
+                    ser,
+                    BAND_ORDER,
+                )
 
-            if spectrum is not None:
-                stats = calculate_noise_stats(
-                    freqs_hz=spectrum["freqs_Hz"],
-                    asd_v_per_sqrt_hz=spectrum["asd_V_per_sqrtHz"],
+                while not capture.done():
+                    stop_requested = input_handler.process_commands(
+                        instrument="SAMD21",
+                        sample_rate_hz=raw_sample_rate_hz,
+                        samples=SAMPLES,
+                        plot_config=PLOT_CONFIG,
+                        stats_min_hz=STATS_MIN_HZ,
+                        stats_max_hz=STATS_MAX_HZ,
+                    )
+                    plt.pause(0.05)
+
+                    if stop_requested or not plot["running"]:
+                        break
+
+                # Finish consuming the current serial response before another
+                # command is sent or the serial port is closed.
+                blocks = capture.result()
+
+                if stop_requested or not plot["running"]:
+                    break
+
+                spectrum = process_blocks(
+                    blocks=blocks,
+                    bands=bands,
+                    band_order=BAND_ORDER,
+                    samples=SAMPLES,
+                )
+
+                if spectrum is not None:
+                    stats = calculate_noise_stats(
+                        freqs_hz=spectrum["freqs_Hz"],
+                        asd_v_per_sqrt_hz=spectrum["asd_V_per_sqrtHz"],
+                        stats_min_hz=STATS_MIN_HZ,
+                        stats_max_hz=STATS_MAX_HZ,
+                    )
+
+                    input_handler.update_spectrum(spectrum)
+                    update_live_plot(
+                        plot=plot,
+                        freqs_hz=spectrum["freqs_Hz"],
+                        asd_v_per_sqrt_hz=spectrum["asd_V_per_sqrtHz"],
+                        stats=stats,
+                        y_min=PLOT_CONFIG["y_min"],
+                        y_max=PLOT_CONFIG["y_max"],
+                    )
+
+                stop_requested = input_handler.process_commands(
+                    instrument="SAMD21",
+                    sample_rate_hz=raw_sample_rate_hz,
+                    samples=SAMPLES,
+                    plot_config=PLOT_CONFIG,
                     stats_min_hz=STATS_MIN_HZ,
                     stats_max_hz=STATS_MAX_HZ,
                 )
-
-                input_handler.update_spectrum(spectrum)
-                update_live_plot(
-                    plot=plot,
-                    freqs_hz=spectrum["freqs_Hz"],
-                    asd_v_per_sqrt_hz=spectrum["asd_V_per_sqrtHz"],
-                    stats=stats,
-                    y_min=PLOT_CONFIG["y_min"],
-                    y_max=PLOT_CONFIG["y_max"],
-                )
-
-            should_quit = input_handler.process_commands(
-                instrument="SAMD21",
-                sample_rate_hz=raw_sample_rate_hz,
-                samples=SAMPLES,
-                plot_config=PLOT_CONFIG,
-                stats_min_hz=STATS_MIN_HZ,
-                stats_max_hz=STATS_MAX_HZ,
-            )
-            if should_quit:
-                break
 
     except KeyboardInterrupt:
         print()
