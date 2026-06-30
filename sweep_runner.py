@@ -9,7 +9,8 @@ from config import (
     STATS_MIN_HZ,
     STATS_MAX_HZ,
     PLOT_CONFIG,
-    BAND_ORDER,
+    active_band_order,
+    band_for_frequency,
     make_bands,
     PORT,
     BAUD,
@@ -36,6 +37,7 @@ def run_synthetic_sweep():
 
     raw_sample_rate_hz = 100000.0
     bands = make_bands(raw_sample_rate_hz)
+    band_order = active_band_order(bands)
 
     for index, target_freq_hz in enumerate(TEST_FREQS_HZ):
         print()
@@ -44,7 +46,7 @@ def run_synthetic_sweep():
 
         blocks = generate_synthetic_blocks(
             bands=bands,
-            band_order=BAND_ORDER,
+            band_order=band_order,
             samples=SAMPLES,
             signal_freq_hz=target_freq_hz,
             signal_amp_v=TEST_SIGNAL_AMP_V,
@@ -53,19 +55,13 @@ def run_synthetic_sweep():
         spectrum = process_blocks(
             blocks=blocks,
             bands=bands,
-            band_order=BAND_ORDER,
+            band_order=band_order,
             samples=SAMPLES,
+            raw_sample_rate_hz=raw_sample_rate_hz,
         )
 
-        if target_freq_hz >= bands["HIGH"]["stitch_min"]:
-            active_band_name = "HIGH"
-            active_fmin = bands["HIGH"]["f_min_Hz"]
-        elif target_freq_hz >= bands["MID"]["stitch_min"]:
-            active_band_name = "MID"
-            active_fmin = bands["MID"]["f_min_Hz"]
-        else:
-            active_band_name = "LOW"
-            active_fmin = bands["LOW"]["f_min_Hz"]
+        active_band_name = band_for_frequency(bands, target_freq_hz)
+        active_fmin = bands[active_band_name]["f_min_Hz"]
 
         test = calculate_test_results(
             freqs_hz=spectrum["freqs_Hz"],
@@ -117,6 +113,7 @@ def run_live_mode():
     try:
         raw_sample_rate_hz = request_raw_sample_rate(ser)
         bands = make_bands(raw_sample_rate_hz)
+        band_order = active_band_order(bands)
 
         plot = create_live_plot(
             y_min=PLOT_CONFIG["y_min"],
@@ -136,7 +133,7 @@ def run_live_mode():
                 capture = acquisition_executor.submit(
                     read_band_blocks,
                     ser,
-                    BAND_ORDER,
+                    band_order,
                 )
 
                 while not capture.done():
@@ -163,8 +160,9 @@ def run_live_mode():
                 spectrum = process_blocks(
                     blocks=blocks,
                     bands=bands,
-                    band_order=BAND_ORDER,
+                    band_order=band_order,
                     samples=SAMPLES,
+                    raw_sample_rate_hz=raw_sample_rate_hz,
                 )
 
                 if spectrum is not None:

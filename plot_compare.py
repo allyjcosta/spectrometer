@@ -30,6 +30,7 @@ def compare_saved_measurements(files=None):
 
     handles = []
     labels = []
+    plotted_frequencies = []
 
     for filename in files:
         measurement = load_measurement(filename)
@@ -37,11 +38,18 @@ def compare_saved_measurements(files=None):
         freqs = np.asarray(measurement["freqs_Hz"], dtype=float)
         asd = np.asarray(measurement["asd_V_per_sqrtHz"], dtype=float)
         mag = np.asarray(measurement["mag_V"], dtype=float)
+        sample_rate_hz = measurement.get("sample_rate_Hz")
+        nyquist_hz = (
+            float(sample_rate_hz) / 2.0
+            if sample_rate_hz is not None
+            else np.inf
+        )
 
         valid_asd = (
             np.isfinite(freqs)
             & np.isfinite(asd)
             & (freqs > 0)
+            & (freqs <= nyquist_hz)
             & (asd > 0)
         )
 
@@ -49,8 +57,13 @@ def compare_saved_measurements(files=None):
             np.isfinite(freqs)
             & np.isfinite(mag)
             & (freqs > 0)
+            & (freqs <= nyquist_hz)
             & (mag > 0)
         )
+
+        valid_frequency = valid_asd | valid_mag
+        if np.any(valid_frequency):
+            plotted_frequencies.append(freqs[valid_frequency])
 
         instrument = measurement.get("instrument", "Unknown instrument")
         median_nv = (measurement.get("stats") or {}).get("median_nV_per_sqrtHz")
@@ -91,6 +104,13 @@ def compare_saved_measurements(files=None):
     ax_mag.set_xlabel("Frequency (Hz)")
     ax_mag.set_ylabel("Amplitude (V)")
     ax_mag.grid(True, which="both", alpha=0.3)
+
+    if plotted_frequencies:
+        all_plotted_frequencies = np.concatenate(plotted_frequencies)
+        ax_mag.set_xlim(
+            np.min(all_plotted_frequencies),
+            np.max(all_plotted_frequencies),
+        )
 
     # Render the legend inside its safe side panel
     if handles:

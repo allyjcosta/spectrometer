@@ -4,7 +4,12 @@ import select
 import sys
 import threading
 
-from config import TEST_FREQS_HZ, TEST_SIGNAL_AMP_V, make_bands
+from config import (
+    TEST_FREQS_HZ,
+    TEST_SIGNAL_AMP_V,
+    band_for_frequency,
+    make_bands,
+)
 from FFT_analysis import calculate_test_results
 from plot_compare import (
     compare_saved_measurements,
@@ -227,12 +232,13 @@ class LiveInputHandler:
                 print(f"Could not load {filename}: {error}")
                 continue
 
-            if target_freq_hz >= bands["HIGH"]["stitch_min"]:
-                active_fmin = bands["HIGH"]["f_min_Hz"]
-            elif target_freq_hz >= bands["MID"]["stitch_min"]:
-                active_fmin = bands["MID"]["f_min_Hz"]
-            else:
-                active_fmin = bands["LOW"]["f_min_Hz"]
+            active_band_name = band_for_frequency(bands, target_freq_hz)
+            if active_band_name is None:
+                print(
+                    f"Skipping {target_freq_hz:.3f} Hz: outside instrument range."
+                )
+                continue
+            active_fmin = bands[active_band_name]["f_min_Hz"]
 
             test = calculate_test_results(
                 freqs_hz=measurement["freqs_Hz"],

@@ -11,6 +11,8 @@ def create_live_plot(y_min, y_max, raw_sample_rate_hz, title="ADC Noise Spectrom
         "fig": fig,
         "ax": ax,
         "running": True,
+        "x_min_hz": 0.1,
+        "nyquist_hz": raw_sample_rate_hz / 2.0,
     }
 
     def on_close(_event):
@@ -44,7 +46,7 @@ def create_live_plot(y_min, y_max, raw_sample_rate_hz, title="ADC Noise Spectrom
     ax.set_ylabel("Amplitude Spectral Density (V/√Hz)")
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_xlim(0.1, raw_sample_rate_hz / 2)
+    ax.set_xlim(plot["x_min_hz"], plot["nyquist_hz"])
     ax.set_ylim(y_min, y_max)
     ax.grid(True, which="both", alpha=0.3)
     ax.legend(fontsize=8)
@@ -71,7 +73,8 @@ def update_live_plot(plot, freqs_hz, asd_v_per_sqrt_hz, stats=None, y_min=None, 
     valid = (
         np.isfinite(freqs_hz)
         & np.isfinite(asd_v_per_sqrt_hz)
-        & (freqs_hz > 0)
+        & (freqs_hz >= plot["x_min_hz"])
+        & (freqs_hz <= plot["nyquist_hz"])
         & (asd_v_per_sqrt_hz > 0)
     )
 
@@ -80,7 +83,7 @@ def update_live_plot(plot, freqs_hz, asd_v_per_sqrt_hz, stats=None, y_min=None, 
 
     line.set_data(freqs_hz[valid], asd_v_per_sqrt_hz[valid])
 
-    ax.set_xlim(np.min(freqs_hz[valid]), np.max(freqs_hz[valid]))
+    ax.set_xlim(plot["x_min_hz"], plot["nyquist_hz"])
 
     if y_min is not None and y_max is not None:
         ax.set_ylim(y_min, y_max)

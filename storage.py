@@ -75,6 +75,16 @@ def save_measurement(
     mag_v = np.asarray(mag_v, dtype=float)
     asd_v_per_sqrt_hz = np.asarray(asd_v_per_sqrt_hz, dtype=float)
 
+    nyquist_hz = float(sample_rate_hz) / 2.0
+    physical = (
+        np.isfinite(freqs_hz)
+        & (freqs_hz > 0)
+        & (freqs_hz <= nyquist_hz)
+    )
+    freqs_hz = freqs_hz[physical]
+    mag_v = mag_v[physical]
+    asd_v_per_sqrt_hz = asd_v_per_sqrt_hz[physical]
+
     stats = calculate_noise_stats(
         freqs_hz=freqs_hz,
         asd_v_per_sqrt_hz=asd_v_per_sqrt_hz,
@@ -101,6 +111,7 @@ def save_measurement(
         "measurement_type": measurement_type,
 
         "sample_rate_Hz": float(sample_rate_hz),
+        "nyquist_Hz": nyquist_hz,
         "samples": int(samples),
 
         "plot_config": plot_config,

@@ -23,26 +23,52 @@ TEST_FREQS_HZ = [
 
 
 def make_bands(raw_sample_rate_hz):
-    return {
-        "LOW": {
-            "f_min_Hz": 0.1,
-            "stitch_min": 0.1,
-            "stitch_max": (0.1 * SAMPLES) / 2,
-        },
-        "MID": {
-            "f_min_Hz": 1.0,
-            "stitch_min": (0.1 * SAMPLES) / 2,
-            "stitch_max": (1.0 * SAMPLES) / 2,
-        },
-        "HIGH": {
-            "f_min_Hz": raw_sample_rate_hz / SAMPLES,
-            "stitch_min": (1.0 * SAMPLES) / 2,
-            "stitch_max": None,
-        },
-    }
+    raw_sample_rate_hz = float(raw_sample_rate_hz)
+    if raw_sample_rate_hz <= 0:
+        raise ValueError("Raw sample rate must be positive.")
+
+    candidates = [
+        ("LOW", 0.1),
+        ("MID", 1.0),
+    ]
+
+    # A decimated band is useful only when its FFT rate is below the raw rate.
+    active = [
+        (name, f_min_hz)
+        for name, f_min_hz in candidates
+        if f_min_hz * SAMPLES < raw_sample_rate_hz
+    ]
+    active.append(("HIGH", raw_sample_rate_hz / SAMPLES))
+
+    bands = {}
+    stitch_min_hz = 0.1
+    for name, f_min_hz in active:
+        band_nyquist_hz = (f_min_hz * SAMPLES) / 2.0
+        bands[name] = {
+            "f_min_Hz": f_min_hz,
+            "stitch_min": stitch_min_hz,
+            "stitch_max": None if name == "HIGH" else band_nyquist_hz,
+        }
+        stitch_min_hz = band_nyquist_hz
+
+    return bands
 
 
 BAND_ORDER = ["LOW", "MID", "HIGH"]
+
+
+def active_band_order(bands):
+    return [name for name in BAND_ORDER if name in bands]
+
+
+def band_for_frequency(bands, frequency_hz):
+    for name in active_band_order(bands):
+        band = bands[name]
+        if frequency_hz < band["stitch_min"]:
+            continue
+        if band["stitch_max"] is None or frequency_hz < band["stitch_max"]:
+            return name
+    return None
 
 
 PLOT_CONFIG = {
