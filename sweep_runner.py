@@ -9,6 +9,7 @@ from config import (
     STATS_MIN_HZ,
     STATS_MAX_HZ,
     PLOT_CONFIG,
+    INSTRUMENT_LABEL,
     active_band_order,
     band_for_frequency,
     make_bands,
@@ -138,7 +139,7 @@ def run_live_mode():
 
                 while not capture.done():
                     stop_requested = input_handler.process_commands(
-                        instrument="SAMD21",
+                        instrument=INSTRUMENT_LABEL,
                         sample_rate_hz=raw_sample_rate_hz,
                         samples=SAMPLES,
                         plot_config=PLOT_CONFIG,
@@ -184,7 +185,7 @@ def run_live_mode():
                     )
 
                 stop_requested = input_handler.process_commands(
-                    instrument="SAMD21",
+                    instrument=INSTRUMENT_LABEL,
                     sample_rate_hz=raw_sample_rate_hz,
                     samples=SAMPLES,
                     plot_config=PLOT_CONFIG,

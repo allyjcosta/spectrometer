@@ -7,6 +7,7 @@ import threading
 from config import (
     TEST_FREQS_HZ,
     TEST_SIGNAL_AMP_V,
+    INSTRUMENT_LABEL,
     band_for_frequency,
     make_bands,
 )
@@ -251,7 +252,7 @@ class LiveInputHandler:
 
             try:
                 save_measurement(
-                    instrument=measurement.get("instrument", "SAMD21"),
+                    instrument=measurement.get("instrument", INSTRUMENT_LABEL),
                     measurement_type="live_test",
                     freqs_hz=measurement["freqs_Hz"],
                     mag_v=measurement["mag_V"],
