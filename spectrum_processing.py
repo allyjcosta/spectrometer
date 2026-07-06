@@ -1,3 +1,5 @@
+import numpy as np
+
 from FFT_analysis import compute_fft_analysis
 from stitching import stitch_latest_results
 
@@ -24,6 +26,12 @@ def process_blocks(
             continue
 
         data = data[:samples]
+
+        if np.ptp(data) == 0:
+            print(
+                f"Warning: {band_name} block is constant at "
+                f"{float(data[0]):.9g} V; its non-DC spectrum is zero."
+            )
 
         band = bands[band_name]
         fft_sample_rate_hz = band["f_min_Hz"] * samples

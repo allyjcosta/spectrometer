@@ -132,8 +132,8 @@ def calculate_spectral_leakage(
     }
 
 
-def find_second_harmonic(freqs_hz, mag_v, target_freq_hz, search_bins=5):
-    second_harmonic_hz = 2.0 * target_freq_hz
+def find_second_harmonic(freqs_hz, mag_v, fundamental_freq_hz, search_bins=5):
+    second_harmonic_hz = 2.0 * fundamental_freq_hz
 
     if second_harmonic_hz > freqs_hz[-1]:
         return {
@@ -141,10 +141,35 @@ def find_second_harmonic(freqs_hz, mag_v, target_freq_hz, search_bins=5):
             "second_harmonic_amp_V": None,
         }
 
-    nearest_idx = np.argmin(np.abs(freqs_hz - second_harmonic_hz))
+    nearest_idx = int(np.argmin(np.abs(freqs_hz - second_harmonic_hz)))
 
-    search_lo = max(0, nearest_idx - search_bins)
-    search_hi = min(len(freqs_hz), nearest_idx + search_bins + 1)
+    # Estimate resolution locally because stitched bands can have different
+    # bin widths. A Blackman-Harris fundamental occupies roughly +/-4 bins;
+    # if its second harmonic falls inside that lobe, THD2 is not resolvable.
+    resolution_lo = max(0, nearest_idx - 3)
+    resolution_hi = min(len(freqs_hz), nearest_idx + 4)
+    local_diffs = np.diff(freqs_hz[resolution_lo:resolution_hi])
+    local_diffs = local_diffs[local_diffs > 0]
+    if len(local_diffs) == 0:
+        return {
+            "second_harmonic_freq_Hz": None,
+            "second_harmonic_amp_V": None,
+        }
+
+    local_bin_width_hz = float(np.median(local_diffs))
+    harmonic_separation_hz = second_harmonic_hz - fundamental_freq_hz
+    if harmonic_separation_hz <= 4.0 * local_bin_width_hz:
+        return {
+            "second_harmonic_freq_Hz": None,
+            "second_harmonic_amp_V": None,
+        }
+
+    separation_bins = harmonic_separation_hz / local_bin_width_hz
+    nonoverlap_search_bins = max(0, int(np.floor(separation_bins / 2.0)) - 1)
+    effective_search_bins = min(search_bins, nonoverlap_search_bins)
+
+    search_lo = max(0, nearest_idx - effective_search_bins)
+    search_hi = min(len(freqs_hz), nearest_idx + effective_search_bins + 1)
 
     local_peak_idx = search_lo + np.argmax(mag_v[search_lo:search_hi])
 
@@ -176,15 +201,15 @@ def calculate_test_results(
             search_bins=search_bins,
         )
 
+    measured_freq_hz = peak["measured_freq_Hz"]
+    measured_amp_v = peak["measured_amp_V"]
+
     harmonic = find_second_harmonic(
         freqs_hz=freqs_hz,
         mag_v=mag_v,
-        target_freq_hz=target_freq_hz,
+        fundamental_freq_hz=measured_freq_hz,
         search_bins=search_bins,
     )
-
-    measured_freq_hz = peak["measured_freq_Hz"]
-    measured_amp_v = peak["measured_amp_V"]
 
     # Calculate frequency errors purely based on the local band's fmin_hz
     freq_error_hz = measured_freq_hz - target_freq_hz

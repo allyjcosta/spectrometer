@@ -14,6 +14,7 @@ from config import (
 from FFT_analysis import calculate_test_results
 from plot_compare import (
     compare_saved_measurements,
+    plot_saved_measurements_stacked,
     plot_amplitude_comparison,
     plot_test_errors,
     plot_thd2,
@@ -62,6 +63,7 @@ class LiveInputHandler:
         print("5 = Plot THD2")
         print("6 = Plot amplitude comparison")
         print("7 = Clear saved measurements")
+        print("8 = Stack saved measurements")
         print("q = Quit live mode")
 
     def _input_loop(self):
@@ -122,6 +124,7 @@ class LiveInputHandler:
                 "5": "plot THD2",
                 "6": "plot amplitude comparison",
                 "7": "clear saved measurements",
+                "8": "stack saved measurements",
                 "q": "quit live mode",
             }
             command_label = command_labels.get(command)
@@ -141,6 +144,7 @@ class LiveInputHandler:
                 self._run_plot("comparison", compare_saved_measurements)
             elif command == "4":
                 files = self._prepare_live_test_measurements(
+                    instrument=instrument,
                     sample_rate_hz=sample_rate_hz,
                     samples=samples,
                     plot_config=plot_config,
@@ -152,14 +156,16 @@ class LiveInputHandler:
                 else:
                     self._run_sweep_plot("test errors", plot_test_errors)
             elif command == "5":
-                self._run_sweep_plot("THD2", plot_thd2)
+                self._run_plot("THD2", plot_thd2)
             elif command == "6":
-                self._run_sweep_plot("amplitude comparison", plot_amplitude_comparison)
+                self._run_plot("amplitude comparison", plot_amplitude_comparison)
             elif command == "7":
                 clear_saved_measurements()
                 self.saved_test_points.clear()
                 self.prepared_live_test_files.clear()
                 self.next_test_index = 0
+            elif command == "8":
+                self._run_plot("stacked measurements", plot_saved_measurements_stacked)
             elif command == "2":
                 self._list_measurements()
             elif command == "q":
@@ -214,25 +220,51 @@ class LiveInputHandler:
 
     def _prepare_live_test_measurements(
         self,
+        instrument,
         sample_rate_hz,
         samples,
         plot_config,
         stats_min_hz,
         stats_max_hz,
     ):
-        bands = make_bands(sample_rate_hz)
         prepared_files = []
 
-        for filename, target_freq_hz in self.saved_test_points:
-            if target_freq_hz is None:
-                continue
-
+        live_files = []
+        for filename in discover_measurements():
             try:
                 measurement = load_measurement(filename)
             except Exception as error:
                 print(f"Could not load {filename}: {error}")
                 continue
 
+            if measurement.get("instrument") != instrument:
+                continue
+            if measurement.get("measurement_type") not in ("live", "live_test"):
+                continue
+
+            live_files.append((filename, measurement))
+
+        if len(live_files) > len(TEST_FREQS_HZ):
+            print(
+                f"Only the first {len(TEST_FREQS_HZ)} of {len(live_files)} "
+                "saved live measurements have configured test frequencies."
+            )
+
+        for index, (filename, measurement) in enumerate(live_files):
+            if index >= len(TEST_FREQS_HZ):
+                break
+
+            target_freq_hz = TEST_FREQS_HZ[index]
+            print(
+                f"Test index {index}: {os.path.basename(filename)} "
+                f"-> {target_freq_hz:.3f} Hz"
+            )
+
+            measurement_sample_rate_hz = measurement.get(
+                "sample_rate_Hz",
+                sample_rate_hz,
+            )
+            bands = make_bands(measurement_sample_rate_hz)
             active_band_name = band_for_frequency(bands, target_freq_hz)
             if active_band_name is None:
                 print(
@@ -257,7 +289,7 @@ class LiveInputHandler:
                     freqs_hz=measurement["freqs_Hz"],
                     mag_v=measurement["mag_V"],
                     asd_v_per_sqrt_hz=measurement["asd_V_per_sqrtHz"],
-                    sample_rate_hz=measurement.get("sample_rate_Hz", sample_rate_hz),
+                    sample_rate_hz=measurement_sample_rate_hz,
                     samples=measurement.get("samples", samples),
                     plot_config=measurement.get("plot_config", plot_config),
                     stats_min_hz=stats_min_hz,

@@ -4,7 +4,10 @@ PORT = "/dev/cu.usbmodem101"
 BAUD = 2000000
 SAMPLES = 2048
 
-INSTRUMENT_LABEL = "ATMEGA328"
+#INSTRUMENT_LABEL = "SAMD21"
+#INSTRUMENT_LABEL = "ADS1115"
+INSTRUMENT_LABEL = "MCP3202"
+#INSTRUMENT_LABEL = "ATMEGA328"
 
 STATS_MIN_HZ = 50
 STATS_MAX_HZ = 10000
@@ -12,7 +15,7 @@ STATS_MAX_HZ = 10000
 Y_MIN = 1e-15
 Y_MAX = 1e0
 
-TEST_SIGNAL_AMP_V = 1e-3
+TEST_SIGNAL_AMP_V = 500e-3
 
 TEST_FREQS_HZ = [
     0.1, 0.2, 0.5, 0.75,
@@ -41,7 +44,9 @@ def make_bands(raw_sample_rate_hz):
     active.append(("HIGH", raw_sample_rate_hz / SAMPLES))
 
     bands = {}
-    stitch_min_hz = 0.1
+    # The first positive FFT bin is one bin-width above DC. For a device
+    # without a decimated LOW band, this follows its measured sample rate.
+    stitch_min_hz = active[0][1]
     for name, f_min_hz in active:
         band_nyquist_hz = (f_min_hz * SAMPLES) / 2.0
         bands[name] = {

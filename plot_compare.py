@@ -1,7 +1,137 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+from config import (
+    TEST_FREQS_HZ,
+    TEST_SIGNAL_AMP_V,
+    band_for_frequency,
+    make_bands,
+)
+from FFT_analysis import calculate_test_results
 from storage import discover_measurements, load_measurement
+
+
+COMPARISON_COLORS = [
+    "#0057B8",  # cobalt blue
+    "#E6007E",  # vivid magenta
+    "#00A651",  # emerald green
+    "#F28E00",  # saturated orange
+    "#6A3D9A",  # deep purple
+    "#00A6D6",  # cyan blue
+]
+
+
+def _plot_saved_measurement_grid(measurements, value_key, ylabel, figure_title):
+    measurement_count = len(measurements)
+    columns = 1
+    rows = measurement_count
+    fig, axes_grid = plt.subplots(
+        rows,
+        columns,
+        figsize=(15, max(4.0, 1.9 * rows)),
+        sharex=True,
+        squeeze=False,
+        constrained_layout=True,
+    )
+    axes = axes_grid.ravel()
+    plotted_frequencies = []
+
+    for index, (ax, measurement) in enumerate(zip(axes, measurements)):
+        freqs = np.asarray(measurement["freqs_Hz"], dtype=float)
+        values = np.asarray(measurement[value_key], dtype=float)
+        sample_rate_hz = measurement.get("sample_rate_Hz")
+        nyquist_hz = (
+            float(sample_rate_hz) / 2.0
+            if sample_rate_hz is not None
+            else np.inf
+        )
+        valid = (
+            np.isfinite(freqs)
+            & np.isfinite(values)
+            & (freqs > 0)
+            & (freqs <= nyquist_hz)
+            & (values > 0)
+        )
+
+        if np.any(valid):
+            plotted_frequencies.append(freqs[valid])
+            ax.plot(
+                freqs[valid],
+                values[valid],
+                color=COMPARISON_COLORS[index % len(COMPARISON_COLORS)],
+                linewidth=0.8,
+                rasterized=True,
+            )
+
+        instrument = measurement.get("instrument", "Unknown instrument")
+        if value_key == "asd_V_per_sqrtHz":
+            median_nv = (measurement.get("stats") or {}).get(
+                "median_nV_per_sqrtHz"
+            )
+            statistic_label = (
+                "Median (ASD): N/A"
+                if median_nv is None
+                else f"Median (ASD): {float(median_nv):.2f} nV/√Hz"
+            )
+        else:
+            peak_v = float(np.max(values[valid])) if np.any(valid) else None
+            statistic_label = (
+                "Peak: N/A"
+                if peak_v is None
+                else f"Peak: {peak_v * 1e3:.3f} mV"
+            )
+
+        ax.text(
+            1.01,
+            0.50,
+            f"{index + 1}. {instrument} — {statistic_label}",
+            transform=ax.transAxes,
+            ha="left",
+            va="center",
+            fontsize=8,
+            clip_on=False,
+            bbox=dict(facecolor="white", edgecolor="0.8", alpha=0.82),
+        )
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.grid(True, which="both", alpha=0.25)
+        ax.tick_params(labelsize=7)
+
+    for ax in axes[measurement_count:]:
+        ax.set_visible(False)
+
+    if plotted_frequencies:
+        all_frequencies = np.concatenate(plotted_frequencies)
+        axes[0].set_xlim(np.min(all_frequencies), np.max(all_frequencies))
+
+    fig.supxlabel("Frequency (Hz)")
+    fig.supylabel(ylabel)
+    fig.suptitle(figure_title)
+    return fig
+
+
+def plot_saved_measurements_stacked(files=None):
+    if files is None:
+        files = discover_measurements()
+
+    if not files:
+        print("No saved measurements found.")
+        return
+
+    measurements = [load_measurement(filename) for filename in files]
+    _plot_saved_measurement_grid(
+        measurements=measurements,
+        value_key="asd_V_per_sqrtHz",
+        ylabel="ASD (V/√Hz)",
+        figure_title="Saved Measurements — ASD Small Multiples",
+    )
+    _plot_saved_measurement_grid(
+        measurements=measurements,
+        value_key="mag_V",
+        ylabel="Amplitude (V)",
+        figure_title="Saved Measurements — Amplitude Small Multiples",
+    )
+    plt.show()
 
 
 def compare_saved_measurements(files=None):
@@ -24,6 +154,9 @@ def compare_saved_measurements(files=None):
     ax_asd = ax_dict["asd"]
     ax_mag = ax_dict["mag"]
     ax_leg = ax_dict["legend"]
+
+    # Use a high-contrast, colorblind-friendly order for saved instruments.
+    ax_asd.set_prop_cycle(color=COMPARISON_COLORS)
     
     # Cleanly hide the ticks and spine lines for the legend's panel
     ax_leg.axis("off")
@@ -76,6 +209,7 @@ def compare_saved_measurements(files=None):
             freqs[valid_asd],
             asd[valid_asd],
             linewidth=0.8,
+            alpha=0.78,
             label=label,
         )
 
@@ -83,6 +217,7 @@ def compare_saved_measurements(files=None):
             freqs[valid_mag],
             mag[valid_mag],
             linewidth=0.8,
+            alpha=0.78,
             color=line.get_color(),
         )
 
@@ -130,16 +265,43 @@ def plot_test_errors(files=None):
         files = discover_measurements()
 
     rows = []
+    live_test_index = 0
     for filename in files:
         measurement = load_measurement(filename)
         measurement_type = measurement.get("measurement_type")
         old_test_mode = bool(measurement.get("test_mode", False))
-        new_test_mode = measurement_type in ("synthetic_test", "live_test")
+        live_test_mode = measurement_type in ("live", "live_test")
+        new_test_mode = measurement_type == "synthetic_test" or live_test_mode
 
         if not old_test_mode and not new_test_mode:
             continue
 
-        test = measurement.get("test") or measurement.get("test_results")
+        if live_test_mode:
+            if live_test_index >= len(TEST_FREQS_HZ):
+                continue
+
+            target_freq_hz = TEST_FREQS_HZ[live_test_index]
+            live_test_index += 1
+            sample_rate_hz = measurement.get("sample_rate_Hz")
+            if sample_rate_hz is None:
+                continue
+
+            bands = make_bands(sample_rate_hz)
+            active_band_name = band_for_frequency(bands, target_freq_hz)
+            if active_band_name is None:
+                continue
+
+            test = calculate_test_results(
+                freqs_hz=measurement["freqs_Hz"],
+                mag_v=measurement["mag_V"],
+                target_freq_hz=target_freq_hz,
+                target_amp_v=TEST_SIGNAL_AMP_V,
+                fmin_hz=bands[active_band_name]["f_min_Hz"],
+                use_global_peak=True,
+            )
+        else:
+            test = measurement.get("test") or measurement.get("test_results")
+
         if not test:
             continue
 
@@ -321,14 +483,39 @@ def plot_thd2(files=None):
         files = discover_measurements()
 
     rows = []
+    live_test_index = 0
 
     for filename in files:
         measurement = load_measurement(filename)
+        measurement_type = measurement.get("measurement_type")
 
-        if measurement.get("measurement_type") not in ("synthetic_test", "live_test"):
+        if measurement_type in ("live", "live_test"):
+            if live_test_index >= len(TEST_FREQS_HZ):
+                continue
+
+            target_freq_hz = TEST_FREQS_HZ[live_test_index]
+            live_test_index += 1
+            sample_rate_hz = measurement.get("sample_rate_Hz")
+            if sample_rate_hz is None:
+                continue
+
+            bands = make_bands(sample_rate_hz)
+            active_band_name = band_for_frequency(bands, target_freq_hz)
+            if active_band_name is None:
+                continue
+
+            test = calculate_test_results(
+                freqs_hz=measurement["freqs_Hz"],
+                mag_v=measurement["mag_V"],
+                target_freq_hz=target_freq_hz,
+                target_amp_v=TEST_SIGNAL_AMP_V,
+                fmin_hz=bands[active_band_name]["f_min_Hz"],
+                use_global_peak=False,
+            )
+        elif measurement_type == "synthetic_test":
+            test = measurement.get("test")
+        else:
             continue
-
-        test = measurement.get("test")
 
         if test is None:
             continue
@@ -355,6 +542,7 @@ def plot_thd2(files=None):
 
     fig, ax = plt.subplots(figsize=(12, 5))
     ax.set_xscale("log")
+    ax.set_yscale("log")
 
     ax.plot(
         target_freqs,
@@ -379,16 +567,41 @@ def plot_amplitude_comparison(files=None):
         files = discover_measurements()
 
     rows = []
+    live_test_index = 0
 
     for filename in files:
         measurement = load_measurement(filename)
 
         measurement_type = measurement.get("measurement_type")
 
-        if measurement_type not in ("synthetic_test", "live_test"):
-            continue
+        if measurement_type in ("live", "live_test"):
+            if live_test_index >= len(TEST_FREQS_HZ):
+                continue
 
-        test = measurement.get("test")
+            target_freq_hz = TEST_FREQS_HZ[live_test_index]
+            live_test_index += 1
+            sample_rate_hz = measurement.get("sample_rate_Hz")
+            if sample_rate_hz is None:
+                continue
+
+            bands = make_bands(sample_rate_hz)
+            active_band_name = band_for_frequency(bands, target_freq_hz)
+            if active_band_name is None:
+                continue
+
+            test = calculate_test_results(
+                freqs_hz=measurement["freqs_Hz"],
+                mag_v=measurement["mag_V"],
+                target_freq_hz=target_freq_hz,
+                target_amp_v=TEST_SIGNAL_AMP_V,
+                fmin_hz=bands[active_band_name]["f_min_Hz"],
+                use_global_peak=True,
+            )
+            measurement_type = "live_test"
+        elif measurement_type == "synthetic_test":
+            test = measurement.get("test")
+        else:
+            continue
 
         if test is None:
             continue

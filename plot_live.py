@@ -2,7 +2,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def create_live_plot(y_min, y_max, raw_sample_rate_hz, title="ADC Noise Spectrometer"):
+def create_live_plot(
+    y_min,
+    y_max,
+    raw_sample_rate_hz,
+    min_frequency_hz,
+    title="ADC Noise Spectrometer",
+):
     plt.ion()
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -11,7 +17,7 @@ def create_live_plot(y_min, y_max, raw_sample_rate_hz, title="ADC Noise Spectrom
         "fig": fig,
         "ax": ax,
         "running": True,
-        "x_min_hz": 0.1,
+        "x_min_hz": float(min_frequency_hz),
         "nyquist_hz": raw_sample_rate_hz / 2.0,
     }
 

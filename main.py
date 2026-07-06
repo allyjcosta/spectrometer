@@ -1,6 +1,7 @@
 from sweep_runner import run_live_mode, run_synthetic_sweep
 from plot_compare import (
     compare_saved_measurements,
+    plot_saved_measurements_stacked,
     plot_test_errors,
     plot_thd2,
     plot_amplitude_comparison,
@@ -19,6 +20,7 @@ def main():
         print("5 = Plot THD2")
         print("6 = Plot amplitude comparison")
         print("7 = Clear saved measurements")
+        print("8 = Stack saved measurements")
         print("q = Quit")
 
         choice = input("> ").strip().lower()
@@ -46,6 +48,9 @@ def main():
 
         elif choice == "7":
             clear_saved_measurements()
+
+        elif choice == "8":
+            plot_saved_measurements_stacked()
 
         elif choice == "q":
             break

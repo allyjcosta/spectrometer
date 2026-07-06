@@ -120,6 +120,7 @@ def run_live_mode():
             y_min=PLOT_CONFIG["y_min"],
             y_max=PLOT_CONFIG["y_max"],
             raw_sample_rate_hz=raw_sample_rate_hz,
+            min_frequency_hz=bands[band_order[0]]["f_min_Hz"],
             title="Live Stitched ASD ADC Noise Spectrometer",
         )
         input_handler = create_input_handler()
