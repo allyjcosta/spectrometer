@@ -129,6 +129,7 @@ def run_live_mode():
         print("Close the plot window, enter q, or press Ctrl+C to stop.")
 
         stop_requested = False
+        printed_band_rates = False
 
         with ThreadPoolExecutor(max_workers=1) as acquisition_executor:
             while plot["running"] and not stop_requested:
@@ -154,7 +155,15 @@ def run_live_mode():
 
                 # Finish consuming the current serial response before another
                 # command is sent or the serial port is closed.
-                blocks = capture.result()
+                blocks, band_sample_rates_hz = capture.result()
+                low_sample_rate_hz = band_sample_rates_hz.get("LOW")
+                if not printed_band_rates and low_sample_rate_hz is not None:
+                    print(
+                        "Measured sample rates: "
+                        f"RAW = {raw_sample_rate_hz:.6f} Hz, "
+                        f"LOW = {low_sample_rate_hz:.6f} Hz"
+                    )
+                    printed_band_rates = True
 
                 if stop_requested or not plot["running"]:
                     break
@@ -165,6 +174,7 @@ def run_live_mode():
                     band_order=band_order,
                     samples=SAMPLES,
                     raw_sample_rate_hz=raw_sample_rate_hz,
+                    band_sample_rates_hz=band_sample_rates_hz,
                 )
 
                 if spectrum is not None:

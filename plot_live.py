@@ -76,6 +76,10 @@ def update_live_plot(plot, freqs_hz, asd_v_per_sqrt_hz, stats=None, y_min=None, 
     freqs_hz = np.asarray(freqs_hz, dtype=float)
     asd_v_per_sqrt_hz = np.asarray(asd_v_per_sqrt_hz, dtype=float)
 
+    positive_frequencies = freqs_hz[np.isfinite(freqs_hz) & (freqs_hz > 0)]
+    if positive_frequencies.size:
+        plot["x_min_hz"] = float(np.min(positive_frequencies))
+
     valid = (
         np.isfinite(freqs_hz)
         & np.isfinite(asd_v_per_sqrt_hz)

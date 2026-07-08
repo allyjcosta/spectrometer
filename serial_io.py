@@ -31,6 +31,7 @@ def request_raw_sample_rate(ser):
 
 def read_one_band_block(ser):
     data = []
+    sample_rate_hz = None
 
     while True:
         line = ser.readline().decode(errors="ignore").strip()
@@ -42,7 +43,9 @@ def read_one_band_block(ser):
     while True:
         line = ser.readline().decode(errors="ignore").strip()
 
-        if line == "START":
+        if line.startswith("BAND_SAMPLE_RATE_HZ:"):
+            sample_rate_hz = float(line.split(":", 1)[1])
+        elif line == "START":
             break
 
     while True:
@@ -56,20 +59,23 @@ def read_one_band_block(ser):
         except ValueError:
             pass
 
-    return band_name, np.array(data)
+    return band_name, np.array(data), sample_rate_hz
 
 
 def read_band_blocks(ser, band_order):
     blocks = {}
+    sample_rates_hz = {}
 
     send_cmd(ser, "BLOCK")
 
     while len(blocks) < len(band_order):
-        band_name, data = read_one_band_block(ser)
+        band_name, data, sample_rate_hz = read_one_band_block(ser)
 
         if band_name in band_order:
             blocks[band_name] = data
+            if sample_rate_hz is not None:
+                sample_rates_hz[band_name] = sample_rate_hz
         else:
             print("Ignoring unknown band:", band_name)
 
-    return blocks
+    return blocks, sample_rates_hz
