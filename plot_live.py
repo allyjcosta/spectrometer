@@ -91,7 +91,13 @@ def update_live_plot(plot, freqs_hz, asd_v_per_sqrt_hz, stats=None, y_min=None, 
     if not np.any(valid):
         return
 
-    line.set_data(freqs_hz[valid], asd_v_per_sqrt_hz[valid])
+    plot_freqs = freqs_hz.copy()
+    plot_asd = asd_v_per_sqrt_hz.copy()
+    separators = np.isnan(plot_freqs) | np.isnan(plot_asd)
+    plot_freqs[~valid & ~separators] = np.nan
+    plot_asd[~valid & ~separators] = np.nan
+
+    line.set_data(plot_freqs, plot_asd)
 
     ax.set_xlim(plot["x_min_hz"], plot["nyquist_hz"])
 

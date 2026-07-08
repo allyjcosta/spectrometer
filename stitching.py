@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def stitch_latest_results(band_results, bands, band_order):
     stitched_freqs = []
     stitched_amps = []
@@ -17,8 +18,18 @@ def stitch_latest_results(band_results, bands, band_order):
         if band["stitch_max"] is not None:
             mask &= freqs < band["stitch_max"]
 
-        stitched_freqs.append(freqs[mask])
-        stitched_amps.append(amps[mask])
+        band_freqs = freqs[mask]
+        band_amps = amps[mask]
+
+        if len(band_freqs) == 0:
+            continue
+
+        order = np.argsort(band_freqs)
+        band_freqs = band_freqs[order]
+        band_amps = band_amps[order]
+
+        stitched_freqs.append(band_freqs)
+        stitched_amps.append(band_amps)
 
     if len(stitched_freqs) == 0:
         return None, None
@@ -26,5 +37,4 @@ def stitch_latest_results(band_results, bands, band_order):
     stitched_freqs = np.concatenate(stitched_freqs)
     stitched_amps = np.concatenate(stitched_amps)
 
-    order = np.argsort(stitched_freqs)
-    return stitched_freqs[order], stitched_amps[order]
+    return stitched_freqs, stitched_amps

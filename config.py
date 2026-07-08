@@ -1,8 +1,10 @@
 # config.py
+import math
+
 
 PORT = "/dev/cu.usbmodem101"
 BAUD = 2000000
-SAMPLES = 2048
+SAMPLES = 4096
 
 INSTRUMENT_LABEL = "SAMD21"
 #INSTRUMENT_LABEL = "ADS1115"
@@ -24,6 +26,17 @@ TEST_FREQS_HZ = [
     5000, 7500, 10000, 25000, 40000,
 ]
 
+LOW_HIGH_STITCH_HZ = 135.0
+
+
+def snap_stitch_to_high_bin(high_bin_width_hz):
+    high_bin_width_hz = float(high_bin_width_hz)
+    if high_bin_width_hz <= 0:
+        raise ValueError("High-band bin width must be positive.")
+
+    bin_index = max(1, math.ceil(LOW_HIGH_STITCH_HZ / high_bin_width_hz))
+    return bin_index * high_bin_width_hz
+
 
 def make_bands(raw_sample_rate_hz):
     raw_sample_rate_hz = float(raw_sample_rate_hz)
@@ -41,6 +54,7 @@ def make_bands(raw_sample_rate_hz):
         if f_min_hz * SAMPLES < raw_sample_rate_hz
     ]
     high_bin_width_hz = raw_sample_rate_hz / SAMPLES
+    low_high_stitch_hz = snap_stitch_to_high_bin(high_bin_width_hz)
     active.append(("HIGH", high_bin_width_hz))
 
     bands = {}
@@ -52,9 +66,9 @@ def make_bands(raw_sample_rate_hz):
         bands[name] = {
             "f_min_Hz": f_min_hz,
             "stitch_min": stitch_min_hz,
-            "stitch_max": None if name == "HIGH" else high_bin_width_hz,
+            "stitch_max": None if name == "HIGH" else low_high_stitch_hz,
         }
-        stitch_min_hz = high_bin_width_hz
+        stitch_min_hz = low_high_stitch_hz
 
     return bands
 

@@ -1,5 +1,6 @@
 import numpy as np
 
+from config import snap_stitch_to_high_bin
 from FFT_analysis import compute_fft_analysis
 from stitching import stitch_latest_results
 
@@ -25,7 +26,7 @@ def process_blocks(
             band_sample_rates_hz["LOW"] / samples
         )
     if "LOW" in processing_bands and "HIGH" in processing_bands:
-        stitch_hz = high_rate_hz / samples
+        stitch_hz = snap_stitch_to_high_bin(high_rate_hz / samples)
         processing_bands["LOW"]["stitch_max"] = stitch_hz
         processing_bands["HIGH"]["stitch_min"] = stitch_hz
 
@@ -92,8 +93,11 @@ def process_blocks(
 
     nyquist_hz = high_rate_hz / 2.0
     physical = (
-        (stitched_freqs > 0)
-        & (stitched_freqs <= nyquist_hz)
+        np.isnan(stitched_freqs)
+        | (
+            (stitched_freqs > 0)
+            & (stitched_freqs <= nyquist_hz)
+        )
     )
     stitched_freqs = stitched_freqs[physical]
     stitched_asd = stitched_asd[physical]
