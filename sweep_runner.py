@@ -185,6 +185,10 @@ def run_live_mode():
                         stats_max_hz=STATS_MAX_HZ,
                     )
 
+                    input_handler.update_time_domain(
+                        blocks=blocks,
+                        band_sample_rates_hz=band_sample_rates_hz,
+                    )
                     input_handler.update_spectrum(spectrum)
                     update_live_plot(
                         plot=plot,

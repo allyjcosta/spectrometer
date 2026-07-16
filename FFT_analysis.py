@@ -74,6 +74,31 @@ def find_global_peak(freqs_hz, mag_v):
     }
 
 
+def estimate_local_bin_width(freqs_hz, center_index, radius_bins=3):
+    freqs_hz = np.asarray(freqs_hz, dtype=float)
+
+    if len(freqs_hz) < 2:
+        return None
+
+    center_index = int(center_index)
+    lo = max(0, center_index - radius_bins)
+    hi = min(len(freqs_hz), center_index + radius_bins + 1)
+
+    local_freqs = freqs_hz[lo:hi]
+    local_freqs = local_freqs[np.isfinite(local_freqs)]
+
+    if len(local_freqs) < 2:
+        return None
+
+    local_diffs = np.diff(np.sort(local_freqs))
+    local_diffs = local_diffs[local_diffs > 0]
+
+    if len(local_diffs) == 0:
+        return None
+
+    return float(np.median(local_diffs))
+
+
 def calculate_spectral_leakage(
     freqs_hz,
     mag_v,
@@ -211,9 +236,19 @@ def calculate_test_results(
         search_bins=search_bins,
     )
 
-    # Calculate frequency errors purely based on the local band's fmin_hz
     freq_error_hz = measured_freq_hz - target_freq_hz
-    freq_error_bins = freq_error_hz / fmin_hz
+    error_bin_width_hz = estimate_local_bin_width(
+        freqs_hz=freqs_hz,
+        center_index=peak["peak_index"],
+    )
+    if error_bin_width_hz is None:
+        error_bin_width_hz = fmin_hz
+
+    freq_error_bins = (
+        None
+        if error_bin_width_hz is None or error_bin_width_hz <= 0
+        else freq_error_hz / error_bin_width_hz
+    )
 
     gain = measured_amp_v / target_amp_v if target_amp_v > 0 else None
 
@@ -237,7 +272,12 @@ def calculate_test_results(
         "measured_amp_V": float(measured_amp_v),
 
         "freq_error_Hz": float(freq_error_hz),
-        "freq_error_bins": float(freq_error_bins),
+        "freq_error_bins": (
+            None if freq_error_bins is None else float(freq_error_bins)
+        ),
+        "freq_error_bin_width_Hz": (
+            None if error_bin_width_hz is None else float(error_bin_width_hz)
+        ),
 
         "gain": None if gain is None else float(gain),
         "gain_dB": None if gain_dB is None else float(gain_dB),

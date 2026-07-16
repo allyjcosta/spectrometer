@@ -19,6 +19,7 @@ from plot_compare import (
     plot_test_errors,
     plot_thd2,
 )
+from plot_time_domain import create_time_domain_plot, update_time_domain_plot
 from storage import (
     clear_saved_measurements,
     discover_measurements,
@@ -36,6 +37,9 @@ class LiveInputHandler:
         self.input_thread = None
         self.running = False
         self.current_spectrum = None
+        self.current_blocks = None
+        self.current_band_sample_rates_hz = None
+        self.time_domain_plot = None
         self.saved_test_points = []
         self.prepared_live_test_files = []
         self.next_test_index = 0
@@ -64,6 +68,7 @@ class LiveInputHandler:
         print("6 = Plot amplitude comparison")
         print("7 = Clear saved measurements")
         print("8 = Stack saved measurements")
+        print("9 = Plot time domain signal")
         print("q = Quit live mode")
 
     def _input_loop(self):
@@ -101,6 +106,22 @@ class LiveInputHandler:
     def update_spectrum(self, spectrum):
         self.current_spectrum = spectrum.copy()
 
+    def update_time_domain(self, blocks, band_sample_rates_hz):
+        self.current_blocks = {
+            name: data.copy()
+            for name, data in blocks.items()
+        }
+        self.current_band_sample_rates_hz = dict(band_sample_rates_hz)
+        if (
+            self.time_domain_plot is not None
+            and self.time_domain_plot.get("running", False)
+        ):
+            update_time_domain_plot(
+                plot=self.time_domain_plot,
+                blocks=self.current_blocks,
+                sample_rates_hz=self.current_band_sample_rates_hz,
+            )
+
     def process_commands(
         self,
         instrument,
@@ -125,6 +146,7 @@ class LiveInputHandler:
                 "6": "plot amplitude comparison",
                 "7": "clear saved measurements",
                 "8": "stack saved measurements",
+                "9": "plot time domain signal",
                 "q": "quit live mode",
             }
             command_label = command_labels.get(command)
@@ -166,6 +188,8 @@ class LiveInputHandler:
                 self.next_test_index = 0
             elif command == "8":
                 self._run_plot("stacked measurements", plot_saved_measurements_stacked)
+            elif command == "9":
+                self._plot_time_domain()
             elif command == "2":
                 self._list_measurements()
             elif command == "q":
@@ -179,6 +203,30 @@ class LiveInputHandler:
 
             self._display_menu()
             self.command_completed.set()
+
+    def _plot_time_domain(self):
+        if self.current_blocks is None:
+            print("No live time-domain data is available yet.")
+            return
+
+        try:
+            if (
+                self.time_domain_plot is None
+                or not self.time_domain_plot.get("running", False)
+            ):
+                self.time_domain_plot = create_time_domain_plot(
+                    blocks=self.current_blocks,
+                    sample_rates_hz=self.current_band_sample_rates_hz,
+                    title="Live Time Domain Signal",
+                )
+            else:
+                update_time_domain_plot(
+                    plot=self.time_domain_plot,
+                    blocks=self.current_blocks,
+                    sample_rates_hz=self.current_band_sample_rates_hz,
+                )
+        except Exception as error:
+            print(f"Could not plot time-domain signal: {error}")
 
     def _save_live_snapshot(
         self,

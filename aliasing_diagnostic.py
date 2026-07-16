@@ -10,6 +10,10 @@ from FFT_analysis import compute_fft_analysis
 from serial_io import open_serial, request_raw_sample_rate, send_cmd
 
 
+DIAGNOSTIC_Y_MIN = 1e-15
+DIAGNOSTIC_Y_MAX = 1.0
+
+
 def folded_frequency(signal_hz, sample_rate_hz):
     """Fold a frequency into the one-sided interval [0, sample_rate / 2]."""
     return abs(
@@ -192,12 +196,11 @@ def main():
                     f"{band_name}: measured sample rate {sample_rate_hz:.3f} Hz, "
                     f"Nyquist {sample_rate_hz / 2.0:.3f} Hz"
                 )
-                ax.set_xlim(np.min(freqs[valid]), np.max(freqs[valid]))
-                positive = magnitude[valid]
-                ax.set_ylim(
-                    max(np.min(positive) * 0.5, 1e-15),
-                    np.max(positive) * 2.0,
+                ax.set_xlim(
+                    bands[band_name]["f_min_Hz"],
+                    sample_rate_hz / 2.0,
                 )
+                ax.set_ylim(DIAGNOSTIC_Y_MIN, DIAGNOSTIC_Y_MAX)
                 ax.legend(fontsize=8)
 
                 rate_source = "measured" if band_name in measured_rates_hz else "nominal"
