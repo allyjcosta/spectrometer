@@ -21,6 +21,16 @@ COMPARISON_COLORS = [
 ]
 
 
+def valid_plot_mask(freqs, values, nyquist_hz):
+    return (
+        np.isfinite(freqs)
+        & np.isfinite(values)
+        & (freqs > 0)
+        & (freqs <= nyquist_hz)
+        & (values > 0)
+    )
+
+
 def _plot_saved_measurement_grid(measurements, value_key, ylabel, figure_title):
     measurement_count = len(measurements)
     columns = 1
@@ -45,13 +55,7 @@ def _plot_saved_measurement_grid(measurements, value_key, ylabel, figure_title):
             if sample_rate_hz is not None
             else np.inf
         )
-        valid = (
-            np.isfinite(freqs)
-            & np.isfinite(values)
-            & (freqs > 0)
-            & (freqs <= nyquist_hz)
-            & (values > 0)
-        )
+        valid = valid_plot_mask(freqs, values, nyquist_hz)
 
         if np.any(valid):
             plotted_frequencies.append(freqs[valid])
@@ -65,14 +69,46 @@ def _plot_saved_measurement_grid(measurements, value_key, ylabel, figure_title):
 
         instrument = measurement.get("instrument", "Unknown instrument")
         if value_key == "asd_V_per_sqrtHz":
-            median_nv = (measurement.get("stats") or {}).get(
-                "median_nV_per_sqrtHz"
+            stats = measurement.get("stats") or {}
+            median_nv = stats.get("median_nV_per_sqrtHz")
+            rolling_window_bins = stats.get("rolling_average_window_bins")
+            rolling_average = measurement.get("rolling_average_asd_V_per_sqrtHz")
+            rolling_median_nv = stats.get(
+                "rolling_average_median_nV_per_sqrtHz"
             )
+            if rolling_average is not None:
+                rolling_average = np.asarray(rolling_average, dtype=float)
+                if rolling_average.shape == freqs.shape:
+                    valid_rolling = valid_plot_mask(
+                        freqs,
+                        rolling_average,
+                        nyquist_hz,
+                    )
+                    if np.any(valid_rolling):
+                        ax.plot(
+                            freqs[valid_rolling],
+                            rolling_average[valid_rolling],
+                            color=COMPARISON_COLORS[
+                                index % len(COMPARISON_COLORS)
+                            ],
+                            linewidth=0.9,
+                            alpha=0.9,
+                            linestyle="--",
+                            rasterized=True,
+                        )
             statistic_label = (
                 "Median (ASD): N/A"
                 if median_nv is None
                 else f"Median (ASD): {float(median_nv):.2f} nV/√Hz"
             )
+            if rolling_median_nv is not None:
+                rolling_label = "Saved rolling avg"
+                if rolling_window_bins is not None:
+                    rolling_label += f" ({int(rolling_window_bins)} bins)"
+                statistic_label += (
+                    f"\n{rolling_label}: {float(rolling_median_nv):.2f} "
+                    "nV/√Hz"
+                )
         else:
             peak_v = float(np.max(values[valid])) if np.any(valid) else None
             statistic_label = (
@@ -178,32 +214,27 @@ def compare_saved_measurements(files=None):
             else np.inf
         )
 
-        valid_asd = (
-            np.isfinite(freqs)
-            & np.isfinite(asd)
-            & (freqs > 0)
-            & (freqs <= nyquist_hz)
-            & (asd > 0)
-        )
-
-        valid_mag = (
-            np.isfinite(freqs)
-            & np.isfinite(mag)
-            & (freqs > 0)
-            & (freqs <= nyquist_hz)
-            & (mag > 0)
-        )
+        valid_asd = valid_plot_mask(freqs, asd, nyquist_hz)
+        valid_mag = valid_plot_mask(freqs, mag, nyquist_hz)
 
         valid_frequency = valid_asd | valid_mag
         if np.any(valid_frequency):
             plotted_frequencies.append(freqs[valid_frequency])
 
         instrument = measurement.get("instrument", "Unknown instrument")
-        median_nv = (measurement.get("stats") or {}).get("median_nV_per_sqrtHz")
+        stats = measurement.get("stats") or {}
+        median_nv = stats.get("median_nV_per_sqrtHz")
+        rolling_window_bins = stats.get("rolling_average_window_bins")
+        rolling_median_nv = stats.get("rolling_average_median_nV_per_sqrtHz")
         if median_nv is None:
             label = f"{instrument} — Median (ASD): N/A"
         else:
             label = f"{instrument} — Median (ASD): {float(median_nv):.2f} nV/√Hz"
+        if rolling_median_nv is not None:
+            rolling_label = "Saved rolling avg"
+            if rolling_window_bins is not None:
+                rolling_label += f" ({int(rolling_window_bins)} bins)"
+            label += f" — {rolling_label}: {float(rolling_median_nv):.2f} nV/√Hz"
 
         line, = ax_asd.plot(
             freqs[valid_asd],
@@ -220,6 +251,21 @@ def compare_saved_measurements(files=None):
             alpha=0.78,
             color=line.get_color(),
         )
+
+        rolling_average = measurement.get("rolling_average_asd_V_per_sqrtHz")
+        if rolling_average is not None:
+            rolling_average = np.asarray(rolling_average, dtype=float)
+            if rolling_average.shape == freqs.shape:
+                valid_rolling = valid_plot_mask(freqs, rolling_average, nyquist_hz)
+                if np.any(valid_rolling):
+                    ax_asd.plot(
+                        freqs[valid_rolling],
+                        rolling_average[valid_rolling],
+                        linewidth=0.9,
+                        alpha=0.9,
+                        color=line.get_color(),
+                        linestyle="--",
+                    )
 
         handles.append(line)
         labels.append(label)

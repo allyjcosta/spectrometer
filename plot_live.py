@@ -36,6 +36,15 @@ def create_live_plot(
         label="Median (ASD)",
     )
 
+    rolling_average_line, = ax.plot(
+        [],
+        [],
+        linestyle="-",
+        linewidth=1.0,
+        alpha=0.85,
+        label="Rolling Avg ASD",
+    )
+
     stats_text = ax.text(
         0.02,
         0.02,
@@ -63,6 +72,7 @@ def create_live_plot(
     plot.update({
         "line": line,
         "median_line": median_line,
+        "rolling_average_line": rolling_average_line,
         "stats_text": stats_text,
     })
     return plot
@@ -111,10 +121,31 @@ def update_live_plot(plot, freqs_hz, asd_v_per_sqrt_hz, stats=None, y_min=None, 
             plot["median_line"].set_ydata([median_v, median_v])
 
         median_nv = stats.get("median_nV_per_sqrtHz")
-
-        plot["stats_text"].set_text(
-            f"Median (ASD): {median_nv:.2f} nV/√Hz\n"
+        rolling_average_asd = stats.get("rolling_average_asd_V_per_sqrtHz")
+        rolling_average_median_nv = stats.get(
+            "rolling_average_median_nV_per_sqrtHz"
         )
+        rolling_window_bins = stats.get("rolling_average_window_bins")
+
+        if rolling_average_asd is not None:
+            rolling_average_asd = np.asarray(rolling_average_asd, dtype=float)
+            plot_rolling_asd = rolling_average_asd.copy()
+            plot_rolling_asd[~valid & ~separators] = np.nan
+            plot["rolling_average_line"].set_data(plot_freqs, plot_rolling_asd)
+
+        stat_lines = []
+        if median_nv is not None:
+            stat_lines.append(f"Median (ASD): {median_nv:.2f} nV/√Hz")
+        else:
+            stat_lines.append("Median (ASD): N/A")
+
+        if rolling_average_median_nv is not None:
+            stat_lines.append(
+                f"Rolling avg ASD ({rolling_window_bins} bins): "
+                f"{rolling_average_median_nv:.2f} nV/√Hz"
+            )
+
+        plot["stats_text"].set_text("\n".join(stat_lines))
 
     ax.legend(fontsize=8)
     fig.canvas.draw_idle()

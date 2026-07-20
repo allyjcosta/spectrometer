@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 from config import (
     SAMPLES,
@@ -8,6 +9,7 @@ from config import (
     TEST_SIGNAL_AMP_V,
     STATS_MIN_HZ,
     STATS_MAX_HZ,
+    ROLLING_ASD_WINDOW_BINS,
     PLOT_CONFIG,
     INSTRUMENT_LABEL,
     active_band_order,
@@ -30,6 +32,38 @@ def fmt(value, digits=3):
     if value is None:
         return "N/A"
     return f"{value:.{digits}f}"
+
+
+def rolling_average_by_frequency(values, window_bins):
+    values = np.asarray(values, dtype=float)
+    averaged = np.full(values.shape, np.nan, dtype=float)
+
+    window_bins = max(1, int(window_bins))
+    if window_bins == 1:
+        return values.copy()
+
+    finite = np.isfinite(values) & (values > 0)
+    start = None
+    for index, is_valid in enumerate(finite):
+        if is_valid and start is None:
+            start = index
+        if start is None:
+            continue
+
+        at_end = index == len(finite) - 1
+        run_finished = (not is_valid) or at_end
+        if not run_finished:
+            continue
+
+        stop = index + 1 if is_valid and at_end else index
+        segment = values[start:stop]
+        kernel = np.ones(min(window_bins, len(segment)), dtype=float)
+        weighted_sum = np.convolve(segment, kernel, mode="same")
+        counts = np.convolve(np.ones(len(segment)), kernel, mode="same")
+        averaged[start:stop] = weighted_sum / counts
+        start = None
+
+    return averaged
 
 
 def run_synthetic_sweep():
@@ -184,6 +218,32 @@ def run_live_mode():
                         stats_min_hz=STATS_MIN_HZ,
                         stats_max_hz=STATS_MAX_HZ,
                     )
+                    rolling_average_asd = rolling_average_by_frequency(
+                        values=spectrum["asd_V_per_sqrtHz"],
+                        window_bins=ROLLING_ASD_WINDOW_BINS,
+                    )
+                    spectrum["rolling_average_asd_V_per_sqrtHz"] = (
+                        rolling_average_asd
+                    )
+                    spectrum["rolling_average_window_bins"] = (
+                        ROLLING_ASD_WINDOW_BINS
+                    )
+                    rolling_average_stats = calculate_noise_stats(
+                        freqs_hz=spectrum["freqs_Hz"],
+                        asd_v_per_sqrt_hz=rolling_average_asd,
+                        stats_min_hz=STATS_MIN_HZ,
+                        stats_max_hz=STATS_MAX_HZ,
+                    )
+                    stats.update({
+                        "rolling_average_window_bins": ROLLING_ASD_WINDOW_BINS,
+                        "rolling_average_asd_V_per_sqrtHz": rolling_average_asd,
+                        "rolling_average_median_V_per_sqrtHz": (
+                            rolling_average_stats["median_V_per_sqrtHz"]
+                        ),
+                        "rolling_average_median_nV_per_sqrtHz": (
+                            rolling_average_stats["median_nV_per_sqrtHz"]
+                        ),
+                    })
 
                     input_handler.update_time_domain(
                         blocks=blocks,
