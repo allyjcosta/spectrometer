@@ -1,9 +1,15 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.ticker import FuncFormatter, MultipleLocator
+
+from plot_style import apply_plot_style
 
 
 TIME_DOMAIN_Y_PADDING_FRACTION = 0.08
 TIME_DOMAIN_MIN_Y_SPAN_V = 1e-6
+TIME_DOMAIN_MAX_DISPLAY_SECONDS = 0.100
+TIME_DOMAIN_MAJOR_TICK_SECONDS = 0.010
+TIME_DOMAIN_MINOR_TICK_SECONDS = 0.002
 
 
 def available_block_names(blocks):
@@ -26,7 +32,14 @@ def block_stats_text(data):
     min_v = float(np.min(data))
     max_v = float(np.max(data))
     vpp = max_v - min_v
-    return f"Mean: {mean_v:.6g} V\nVpp: {vpp:.6g} V"
+    amplitude_v = 0.5 * vpp
+    ac_rms_v = float(np.std(data - mean_v))
+    return (
+        f"Mean: {mean_v:.6g} V\n"
+        f"Vpp: {vpp:.6g} V\n"
+        f"Amp: {amplitude_v:.6g} V\n"
+        f"AC RMS: {ac_rms_v:.6g} V"
+    )
 
 
 def padded_limits(values, padding_fraction=TIME_DOMAIN_Y_PADDING_FRACTION):
@@ -45,11 +58,26 @@ def padded_limits(values, padding_fraction=TIME_DOMAIN_Y_PADDING_FRACTION):
     return center - half_span, center + half_span
 
 
+def configure_time_axis(ax, start_seconds, display_seconds):
+    if display_seconds <= 0.2:
+        ax.set_xlabel("Time in window (ms)")
+        ax.xaxis.set_major_locator(MultipleLocator(TIME_DOMAIN_MAJOR_TICK_SECONDS))
+        ax.xaxis.set_minor_locator(MultipleLocator(TIME_DOMAIN_MINOR_TICK_SECONDS))
+        ax.xaxis.set_major_formatter(
+            FuncFormatter(lambda value, _pos: f"{(value - start_seconds) * 1e3:.0f}")
+        )
+    else:
+        ax.set_xlabel("Time (s)")
+        ax.xaxis.set_major_formatter(plt.ScalarFormatter())
+        ax.xaxis.set_minor_locator(plt.NullLocator())
+
+
 def create_time_domain_plot(
     blocks,
     sample_rates_hz=None,
     title="Time Domain Signal",
 ):
+    apply_plot_style()
     plt.ion()
 
     if sample_rates_hz is None:
@@ -63,7 +91,7 @@ def create_time_domain_plot(
     fig, axes = plt.subplots(
         len(band_names),
         1,
-        figsize=(10, 3.2 * len(band_names)),
+        figsize=(14, 3.2 * len(band_names)),
         sharex=False,
     )
 
@@ -93,12 +121,13 @@ def create_time_domain_plot(
             transform=ax.transAxes,
             va="top",
             ha="left",
-            fontsize=9,
+            fontsize=13,
             bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
         )
 
         ax.set_ylabel("Voltage (V)")
-        ax.grid(True, alpha=0.3)
+        ax.grid(True, which="major", alpha=0.3)
+        ax.grid(True, which="minor", alpha=0.12)
 
         plot["axes"][band_name] = ax
         plot["lines"][band_name] = line
@@ -138,12 +167,18 @@ def update_time_domain_plot(plot, blocks, sample_rates_hz=None):
         line.set_data(time_axis, data)
 
         ax.set_title(f"{band_name} band ({rate_label})")
-        ax.set_xlabel(xlabel)
         if len(time_axis) == 1:
             center = float(time_axis[0])
             ax.set_xlim(center - 0.5, center + 0.5)
+            ax.set_xlabel(xlabel)
+        elif sample_rate_hz is not None and sample_rate_hz > 0:
+            display_seconds = min(TIME_DOMAIN_MAX_DISPLAY_SECONDS, float(time_axis[-1] - time_axis[0]))
+            start_seconds = float(time_axis[-1] - display_seconds)
+            ax.set_xlim(start_seconds, float(time_axis[-1]))
+            configure_time_axis(ax, start_seconds, display_seconds)
         else:
             ax.set_xlim(float(time_axis[0]), float(time_axis[-1]))
+            ax.set_xlabel(xlabel)
 
         ax.set_ylim(*padded_limits(data))
         plot["stats_text"][band_name].set_text(block_stats_text(data))

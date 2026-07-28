@@ -1,7 +1,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+from plot_style import apply_plot_style
 from config import (
+    INPUT_REFERRED_GAIN,
+    INPUT_REFERRED_GAIN_LABEL,
+    STATS_MIN_HZ,
     TEST_FREQS_HZ,
     TEST_SIGNAL_AMP_V,
     band_for_frequency,
@@ -12,13 +16,30 @@ from storage import discover_measurements, load_measurement
 
 
 COMPARISON_COLORS = [
-    "#0057B8",  # cobalt blue
-    "#E6007E",  # vivid magenta
-    "#00A651",  # emerald green
-    "#F28E00",  # saturated orange
-    "#6A3D9A",  # deep purple
-    "#00A6D6",  # cyan blue
+    "#B85C5C",  # muted red
+    "#4E79A7",  # muted blue
+    "#D28B45",  # muted orange
+    "#5C8F68",  # muted green
+    "#8E6A9E",  # muted purple
+    "#8A7A45",  # muted olive
 ]
+
+NOISE_STAT_RANGES_HZ = [
+    ("200-2k", 200.0, 2000.0),
+    ("50-2k", 50.0, 2000.0),
+]
+
+ONE_OVER_F_FIT_RANGE_HZ = (0.1, float(STATS_MIN_HZ))
+
+
+def input_refer_values(values):
+    return np.asarray(values, dtype=float) / INPUT_REFERRED_GAIN
+
+
+def input_refer_stat_nv(value_nv):
+    if value_nv is None:
+        return None
+    return float(value_nv) / INPUT_REFERRED_GAIN
 
 
 def valid_plot_mask(freqs, values, nyquist_hz):
@@ -31,7 +52,118 @@ def valid_plot_mask(freqs, values, nyquist_hz):
     )
 
 
+def calculate_range_stats(freqs, values, ranges_hz):
+    stats = {}
+
+    for label, f_min_hz, f_max_hz in ranges_hz:
+        valid = (
+            np.isfinite(freqs)
+            & np.isfinite(values)
+            & (freqs >= f_min_hz)
+            & (freqs <= f_max_hz)
+            & (values > 0)
+        )
+
+        if not np.any(valid):
+            stats[label] = {
+                "mean_V_per_sqrtHz": None,
+                "median_V_per_sqrtHz": None,
+                "mean_nV_per_sqrtHz": None,
+                "median_nV_per_sqrtHz": None,
+            }
+            continue
+
+        range_values = values[valid]
+        mean_v = float(np.mean(range_values))
+        median_v = float(np.median(range_values))
+        stats[label] = {
+            "mean_V_per_sqrtHz": mean_v,
+            "median_V_per_sqrtHz": median_v,
+            "mean_nV_per_sqrtHz": mean_v * 1e9,
+            "median_nV_per_sqrtHz": median_v * 1e9,
+        }
+
+    return stats
+
+
+def evaluate_power_law(freqs, slope, intercept):
+    freqs = np.asarray(freqs, dtype=float)
+    return 10 ** (intercept + slope * np.log10(freqs))
+
+
+def reference_power_law_intercept(anchor_freq_hz, anchor_value, slope):
+    return float(np.log10(anchor_value) - slope * np.log10(anchor_freq_hz))
+
+
+def plot_minus_one_reference(ax, freqs, values, valid, color):
+    f_min_hz, f_max_hz = ONE_OVER_F_FIT_RANGE_HZ
+    anchor_target_hz = 10.0
+    anchor_candidates = np.where(
+        valid
+        & np.isfinite(freqs)
+        & np.isfinite(values)
+        & (freqs > 0)
+        & (values > 0)
+        & (freqs >= f_min_hz)
+        & (freqs <= f_max_hz)
+    )[0]
+    if anchor_candidates.size == 0:
+        return
+
+    anchor_index = anchor_candidates[
+        np.argmin(np.abs(np.log10(freqs[anchor_candidates]) - np.log10(anchor_target_hz)))
+    ]
+    anchor_freq_hz = float(freqs[anchor_index])
+    anchor_value = float(values[anchor_index])
+    reference_intercept = reference_power_law_intercept(
+        anchor_freq_hz=anchor_freq_hz,
+        anchor_value=anchor_value,
+        slope=-1.0,
+    )
+    reference_freqs = np.geomspace(f_min_hz, f_max_hz, 200)
+
+    ax.plot(
+        reference_freqs,
+        evaluate_power_law(reference_freqs, -1.0, reference_intercept),
+        color=color,
+        linewidth=0.9,
+        alpha=0.6,
+        linestyle="--",
+        rasterized=True,
+    )
+
+
+def format_range_stats(range_stats):
+    parts = []
+    for label, _f_min_hz, _f_max_hz in NOISE_STAT_RANGES_HZ:
+        stats = range_stats[label]
+        median_nv = stats["median_nV_per_sqrtHz"]
+        mean_nv = stats["mean_nV_per_sqrtHz"]
+        if median_nv is None or mean_nv is None:
+            parts.append(f"{label}: N/A")
+        else:
+            parts.append(f"{label}: med {median_nv:.0f}, mean {mean_nv:.0f}")
+
+    return "\n".join(parts)
+
+
+def format_input_referred_summary(instrument, mean_nv, median_nv, range_stats):
+    parts = [instrument]
+    if mean_nv is None:
+        parts.append("Mean: N/A")
+    else:
+        parts.append(f"Mean: {mean_nv:.2f} nV/√Hz")
+
+    if median_nv is not None:
+        parts.append(f"Median: {median_nv:.2f} nV/√Hz")
+
+    parts.append(format_range_stats(range_stats))
+    parts.append(f"Gain label: {INPUT_REFERRED_GAIN_LABEL}")
+    return "\n".join(parts)
+
+
 def _plot_saved_measurement_grid(measurements, value_key, ylabel, figure_title):
+    apply_plot_style()
     measurement_count = len(measurements)
     columns = 1
     rows = measurement_count
@@ -48,7 +180,7 @@ def _plot_saved_measurement_grid(measurements, value_key, ylabel, figure_title):
 
     for index, (ax, measurement) in enumerate(zip(axes, measurements)):
         freqs = np.asarray(measurement["freqs_Hz"], dtype=float)
-        values = np.asarray(measurement[value_key], dtype=float)
+        values = input_refer_values(measurement[value_key])
         sample_rate_hz = measurement.get("sample_rate_Hz")
         nyquist_hz = (
             float(sample_rate_hz) / 2.0
@@ -70,45 +202,30 @@ def _plot_saved_measurement_grid(measurements, value_key, ylabel, figure_title):
         instrument = measurement.get("instrument", "Unknown instrument")
         if value_key == "asd_V_per_sqrtHz":
             stats = measurement.get("stats") or {}
-            median_nv = stats.get("median_nV_per_sqrtHz")
-            rolling_window_bins = stats.get("rolling_average_window_bins")
-            rolling_average = measurement.get("rolling_average_asd_V_per_sqrtHz")
-            rolling_median_nv = stats.get(
-                "rolling_average_median_nV_per_sqrtHz"
+            mean_nv = input_refer_stat_nv(stats.get("mean_nV_per_sqrtHz"))
+            median_nv = input_refer_stat_nv(stats.get("median_nV_per_sqrtHz"))
+            range_stats = calculate_range_stats(
+                freqs=freqs,
+                values=values,
+                ranges_hz=NOISE_STAT_RANGES_HZ,
             )
-            if rolling_average is not None:
-                rolling_average = np.asarray(rolling_average, dtype=float)
-                if rolling_average.shape == freqs.shape:
-                    valid_rolling = valid_plot_mask(
-                        freqs,
-                        rolling_average,
-                        nyquist_hz,
-                    )
-                    if np.any(valid_rolling):
-                        ax.plot(
-                            freqs[valid_rolling],
-                            rolling_average[valid_rolling],
-                            color=COMPARISON_COLORS[
-                                index % len(COMPARISON_COLORS)
-                            ],
-                            linewidth=0.9,
-                            alpha=0.9,
-                            linestyle="--",
-                            rasterized=True,
-                        )
+            plot_minus_one_reference(
+                ax=ax,
+                freqs=freqs,
+                values=values,
+                valid=valid,
+                color=COMPARISON_COLORS[index % len(COMPARISON_COLORS)],
+            )
+
             statistic_label = (
-                "Median (ASD): N/A"
-                if median_nv is None
-                else f"Median (ASD): {float(median_nv):.2f} nV/√Hz"
+                "Mean: N/A"
+                if mean_nv is None
+                else f"Mean: {mean_nv:.2f} nV/√Hz"
             )
-            if rolling_median_nv is not None:
-                rolling_label = "Saved rolling avg"
-                if rolling_window_bins is not None:
-                    rolling_label += f" ({int(rolling_window_bins)} bins)"
-                statistic_label += (
-                    f"\n{rolling_label}: {float(rolling_median_nv):.2f} "
-                    "nV/√Hz"
-                )
+            if median_nv is not None:
+                statistic_label += f"\nMedian: {median_nv:.2f} nV/√Hz"
+            statistic_label += f"\n{format_range_stats(range_stats)}"
+            statistic_label += f"\nInput gain: {INPUT_REFERRED_GAIN_LABEL}"
         else:
             peak_v = float(np.max(values[valid])) if np.any(valid) else None
             statistic_label = (
@@ -124,14 +241,14 @@ def _plot_saved_measurement_grid(measurements, value_key, ylabel, figure_title):
             transform=ax.transAxes,
             ha="left",
             va="center",
-            fontsize=8,
+            fontsize=8.5,
             clip_on=False,
             bbox=dict(facecolor="white", edgecolor="0.8", alpha=0.82),
         )
         ax.set_xscale("log")
         ax.set_yscale("log")
         ax.grid(True, which="both", alpha=0.25)
-        ax.tick_params(labelsize=7)
+        ax.tick_params(labelsize=12)
 
     for ax in axes[measurement_count:]:
         ax.set_visible(False)
@@ -158,19 +275,20 @@ def plot_saved_measurements_stacked(files=None):
     _plot_saved_measurement_grid(
         measurements=measurements,
         value_key="asd_V_per_sqrtHz",
-        ylabel="ASD (V/√Hz)",
-        figure_title="Saved Measurements — ASD Small Multiples",
+        ylabel="Input-Referred ASD (V/√Hz)",
+        figure_title="Saved Measurements — Input-Referred ASD Small Multiples",
     )
     _plot_saved_measurement_grid(
         measurements=measurements,
         value_key="mag_V",
-        ylabel="Amplitude (V)",
-        figure_title="Saved Measurements — Amplitude Small Multiples",
+        ylabel="Input-Referred Amplitude (V)",
+        figure_title="Saved Measurements — Input-Referred Amplitude Small Multiples",
     )
     plt.show()
 
 
 def compare_saved_measurements(files=None):
+    apply_plot_style()
     if files is None:
         files = discover_measurements()
 
@@ -182,8 +300,8 @@ def compare_saved_measurements(files=None):
     fig, ax_dict = plt.subplot_mosaic(
         [["asd", "legend"],
          ["mag", "legend"]],
-        figsize=(15, 8),
-        gridspec_kw={"width_ratios": [1, 0.32], "wspace": 0.05},
+        figsize=(16, 8),
+        gridspec_kw={"width_ratios": [1, 0.42], "wspace": 0.04},
         constrained_layout=True,
     )
     
@@ -205,8 +323,8 @@ def compare_saved_measurements(files=None):
         measurement = load_measurement(filename)
 
         freqs = np.asarray(measurement["freqs_Hz"], dtype=float)
-        asd = np.asarray(measurement["asd_V_per_sqrtHz"], dtype=float)
-        mag = np.asarray(measurement["mag_V"], dtype=float)
+        asd = input_refer_values(measurement["asd_V_per_sqrtHz"])
+        mag = input_refer_values(measurement["mag_V"])
         sample_rate_hz = measurement.get("sample_rate_Hz")
         nyquist_hz = (
             float(sample_rate_hz) / 2.0
@@ -223,18 +341,19 @@ def compare_saved_measurements(files=None):
 
         instrument = measurement.get("instrument", "Unknown instrument")
         stats = measurement.get("stats") or {}
-        median_nv = stats.get("median_nV_per_sqrtHz")
-        rolling_window_bins = stats.get("rolling_average_window_bins")
-        rolling_median_nv = stats.get("rolling_average_median_nV_per_sqrtHz")
-        if median_nv is None:
-            label = f"{instrument} — Median (ASD): N/A"
-        else:
-            label = f"{instrument} — Median (ASD): {float(median_nv):.2f} nV/√Hz"
-        if rolling_median_nv is not None:
-            rolling_label = "Saved rolling avg"
-            if rolling_window_bins is not None:
-                rolling_label += f" ({int(rolling_window_bins)} bins)"
-            label += f" — {rolling_label}: {float(rolling_median_nv):.2f} nV/√Hz"
+        mean_nv = input_refer_stat_nv(stats.get("mean_nV_per_sqrtHz"))
+        median_nv = input_refer_stat_nv(stats.get("median_nV_per_sqrtHz"))
+        range_stats = calculate_range_stats(
+            freqs=freqs,
+            values=asd,
+            ranges_hz=NOISE_STAT_RANGES_HZ,
+        )
+        label = format_input_referred_summary(
+            instrument=instrument,
+            mean_nv=mean_nv,
+            median_nv=median_nv,
+            range_stats=range_stats,
+        )
 
         line, = ax_asd.plot(
             freqs[valid_asd],
@@ -252,20 +371,13 @@ def compare_saved_measurements(files=None):
             color=line.get_color(),
         )
 
-        rolling_average = measurement.get("rolling_average_asd_V_per_sqrtHz")
-        if rolling_average is not None:
-            rolling_average = np.asarray(rolling_average, dtype=float)
-            if rolling_average.shape == freqs.shape:
-                valid_rolling = valid_plot_mask(freqs, rolling_average, nyquist_hz)
-                if np.any(valid_rolling):
-                    ax_asd.plot(
-                        freqs[valid_rolling],
-                        rolling_average[valid_rolling],
-                        linewidth=0.9,
-                        alpha=0.9,
-                        color=line.get_color(),
-                        linestyle="--",
-                    )
+        plot_minus_one_reference(
+            ax=ax_asd,
+            freqs=freqs,
+            values=asd,
+            valid=valid_asd,
+            color=line.get_color(),
+        )
 
         handles.append(line)
         labels.append(label)
@@ -276,14 +388,14 @@ def compare_saved_measurements(files=None):
 
     ax_asd.set_xscale("log")
     ax_asd.set_yscale("log")
-    ax_asd.set_ylabel("ASD (V/√Hz)")
-    ax_asd.set_title("Saved Measurement Comparison")
+    ax_asd.set_ylabel("Input-Referred ASD (V/√Hz)")
+    ax_asd.set_title("Saved Measurement Comparison — Input-Referred")
     ax_asd.grid(True, which="both", alpha=0.3)
 
     ax_mag.set_xscale("log")
     ax_mag.set_yscale("log")
     ax_mag.set_xlabel("Frequency (Hz)")
-    ax_mag.set_ylabel("Amplitude (V)")
+    ax_mag.set_ylabel("Input-Referred Amplitude (V)")
     ax_mag.grid(True, which="both", alpha=0.3)
 
     if plotted_frequencies:
@@ -298,15 +410,19 @@ def compare_saved_measurements(files=None):
         ax_leg.legend(
             handles,
             labels,
-            fontsize=8,
+            fontsize=8.5,
             loc="center left",
             frameon=True,
+            borderpad=0.55,
+            labelspacing=0.8,
+            handlelength=2.2,
         )
 
     plt.show()
 
 
 def plot_test_errors(files=None):
+    apply_plot_style()
     if files is None:
         files = discover_measurements()
 
@@ -427,7 +543,11 @@ def plot_test_errors(files=None):
     
     max_gain_abs = max(np.max(np.abs(gain_errors_db)), 0.5)
     ax_gain.set_ylim(-max_gain_abs * 1.2, max_gain_abs * 1.2)
-    ax_gain.set_title("Stitched Multi-Band Spectrometer Accuracy Profile", fontsize=12, fontweight='bold', pad=10)
+    ax_gain.set_title(
+        "Stitched Multi-Band Spectrometer Accuracy Profile",
+        fontweight='bold',
+        pad=10,
+    )
     ax_gain.grid(True, which="both", alpha=0.25)
     plt.setp(ax_gain.get_xticklabels(), visible=False)
 
@@ -471,7 +591,7 @@ def plot_test_errors(files=None):
         cellLoc="left"
     )
     summary_table.auto_set_font_size(False)
-    summary_table.set_fontsize(8.5)
+    summary_table.set_fontsize(12)
     summary_table.scale(1.0, 1.3)
 
     # --- LOWER TABLE: INDIVIDUAL SWEEP POINTS ---
@@ -505,7 +625,7 @@ def plot_test_errors(files=None):
         cellLoc="left"
     )
     points_table.auto_set_font_size(False)
-    points_table.set_fontsize(8)
+    points_table.set_fontsize(11)
     points_table.scale(1.0, 1.08)
 
     # Manual cell width expansion & formatting overrides to prevent cutoffs
@@ -519,12 +639,13 @@ def plot_test_errors(files=None):
         cell.set_width(0.20)
         if row == 0:
             cell.set_height(cell.get_height() * 1.55)
-            cell.set_text_props(weight='bold', color='white', fontsize=7)
+            cell.set_text_props(weight='bold', color='white', fontsize=10)
             cell.set_facecolor('#34495E')
 
     plt.show()
 
 def plot_thd2(files=None):
+    apply_plot_style()
     if files is None:
         files = discover_measurements()
 
@@ -609,6 +730,7 @@ def plot_thd2(files=None):
 
 
 def plot_amplitude_comparison(files=None):
+    apply_plot_style()
     if files is None:
         files = discover_measurements()
 
@@ -735,14 +857,14 @@ def plot_amplitude_comparison(files=None):
     ax1.set_ylabel("Measured Amplitude (V)")
     ax1.set_title("Amplitude Comparison")
     ax1.grid(True, which="both", alpha=0.3)
-    ax1.legend(fontsize=8)
+    ax1.legend()
 
     ax2.axhline(0, linewidth=1.0, alpha=0.6)
     ax2.set_xscale("log")
     ax2.set_xlabel("Target Frequency (Hz)")
     ax2.set_ylabel("Gain Error (dB)")
     ax2.grid(True, which="both", alpha=0.3)
-    ax2.legend(fontsize=8)
+    ax2.legend()
 
     plt.tight_layout()
     plt.show()

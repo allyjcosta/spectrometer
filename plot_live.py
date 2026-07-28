@@ -1,6 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+from config import INPUT_REFERRED_GAIN, INPUT_REFERRED_GAIN_LABEL
+from plot_style import apply_plot_style
+
 
 def create_live_plot(
     y_min,
@@ -9,6 +12,7 @@ def create_live_plot(
     min_frequency_hz,
     title="ADC Noise Spectrometer",
 ):
+    apply_plot_style()
     plt.ion()
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -26,23 +30,22 @@ def create_live_plot(
 
     fig.canvas.mpl_connect("close_event", on_close)
 
-    line, = ax.plot([], [], linewidth=0.8, label="Live ASD")
+    line, = ax.plot([], [], linewidth=0.8, label="Live Input-Referred ASD")
 
     median_line = ax.axhline(
         y=y_min,
         linestyle="--",
         linewidth=1.2,
         alpha=0.8,
-        label="Median (ASD)",
+        label="Median (Input-Referred ASD)",
     )
 
-    rolling_average_line, = ax.plot(
-        [],
-        [],
-        linestyle="-",
+    mean_line = ax.axhline(
+        y=y_min,
+        linestyle="-.",
         linewidth=1.0,
         alpha=0.85,
-        label="Rolling Avg ASD",
+        label="Mean (Input-Referred ASD)",
     )
 
     stats_text = ax.text(
@@ -50,7 +53,7 @@ def create_live_plot(
         0.02,
         "",
         transform=ax.transAxes,
-        fontsize=9,
+        fontsize=13,
         va="bottom",
         ha="left",
         bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
@@ -58,13 +61,13 @@ def create_live_plot(
 
     ax.set_title(title)
     ax.set_xlabel("Frequency (Hz)")
-    ax.set_ylabel("Amplitude Spectral Density (V/√Hz)")
+    ax.set_ylabel("Input-Referred ASD (V/√Hz)")
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlim(plot["x_min_hz"], plot["nyquist_hz"])
     ax.set_ylim(y_min, y_max)
     ax.grid(True, which="both", alpha=0.3)
-    ax.legend(fontsize=8)
+    ax.legend()
 
     plt.tight_layout()
     plt.show(block=False)
@@ -72,7 +75,7 @@ def create_live_plot(
     plot.update({
         "line": line,
         "median_line": median_line,
-        "rolling_average_line": rolling_average_line,
+        "mean_line": mean_line,
         "stats_text": stats_text,
     })
     return plot
@@ -84,7 +87,20 @@ def update_live_plot(plot, freqs_hz, asd_v_per_sqrt_hz, stats=None, y_min=None, 
     line = plot["line"]
 
     freqs_hz = np.asarray(freqs_hz, dtype=float)
-    asd_v_per_sqrt_hz = np.asarray(asd_v_per_sqrt_hz, dtype=float)
+    asd_v_per_sqrt_hz = np.asarray(asd_v_per_sqrt_hz, dtype=float) / INPUT_REFERRED_GAIN
+
+    if stats is not None:
+        stats = dict(stats)
+        for key in (
+            "mean_V_per_sqrtHz",
+            "median_V_per_sqrtHz",
+            "floor90_V_per_sqrtHz",
+            "mean_nV_per_sqrtHz",
+            "median_nV_per_sqrtHz",
+            "floor90_nV_per_sqrtHz",
+        ):
+            if stats.get(key) is not None:
+                stats[key] = stats[key] / INPUT_REFERRED_GAIN
 
     positive_frequencies = freqs_hz[np.isfinite(freqs_hz) & (freqs_hz > 0)]
     if positive_frequencies.size:
@@ -120,34 +136,35 @@ def update_live_plot(plot, freqs_hz, asd_v_per_sqrt_hz, stats=None, y_min=None, 
         if median_v is not None:
             plot["median_line"].set_ydata([median_v, median_v])
 
-        median_nv = stats.get("median_nV_per_sqrtHz")
-        rolling_average_asd = stats.get("rolling_average_asd_V_per_sqrtHz")
-        rolling_average_median_nv = stats.get(
-            "rolling_average_median_nV_per_sqrtHz"
-        )
-        rolling_window_bins = stats.get("rolling_average_window_bins")
+        mean_v = stats.get("mean_V_per_sqrtHz")
+        if mean_v is not None:
+            plot["mean_line"].set_ydata([mean_v, mean_v])
 
-        if rolling_average_asd is not None:
-            rolling_average_asd = np.asarray(rolling_average_asd, dtype=float)
-            plot_rolling_asd = rolling_average_asd.copy()
-            plot_rolling_asd[~valid & ~separators] = np.nan
-            plot["rolling_average_line"].set_data(plot_freqs, plot_rolling_asd)
+        mean_nv = stats.get("mean_nV_per_sqrtHz")
+        median_nv = stats.get("median_nV_per_sqrtHz")
+        stats_min_hz = stats.get("stats_min_Hz")
+        stats_max_hz = stats.get("stats_max_Hz")
 
         stat_lines = []
+        if mean_nv is not None:
+            stat_lines.append(f"Mean (ASD): {mean_nv:.2f} nV/√Hz")
+        else:
+            stat_lines.append("Mean (ASD): N/A")
+
         if median_nv is not None:
             stat_lines.append(f"Median (ASD): {median_nv:.2f} nV/√Hz")
         else:
             stat_lines.append("Median (ASD): N/A")
 
-        if rolling_average_median_nv is not None:
+        if stats_min_hz is not None and stats_max_hz is not None:
             stat_lines.append(
-                f"Rolling avg ASD ({rolling_window_bins} bins): "
-                f"{rolling_average_median_nv:.2f} nV/√Hz"
+                f"Stats band: {stats_min_hz:g}-{stats_max_hz:g} Hz"
             )
+        stat_lines.append(f"Input gain: {INPUT_REFERRED_GAIN_LABEL}")
 
         plot["stats_text"].set_text("\n".join(stat_lines))
 
-    ax.legend(fontsize=8)
+    ax.legend()
     fig.canvas.draw_idle()
     fig.canvas.flush_events()
     plt.pause(0.01)

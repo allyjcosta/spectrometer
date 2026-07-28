@@ -254,12 +254,6 @@ class LiveInputHandler:
                 plot_config=plot_config,
                 stats_min_hz=stats_min_hz,
                 stats_max_hz=stats_max_hz,
-                rolling_average_asd_v_per_sqrt_hz=spectrum.get(
-                    "rolling_average_asd_V_per_sqrtHz"
-                ),
-                rolling_average_window_bins=spectrum.get(
-                    "rolling_average_window_bins"
-                ),
             )
         except Exception as error:
             print(f"Could not save live spectrum: {error}")
@@ -350,14 +344,6 @@ class LiveInputHandler:
                     stats_max_hz=stats_max_hz,
                     test=test,
                     filename=filename,
-                    rolling_average_asd_v_per_sqrt_hz=measurement.get(
-                        "rolling_average_asd_V_per_sqrtHz"
-                    ),
-                    rolling_average_window_bins=(
-                        (measurement.get("stats") or {}).get(
-                            "rolling_average_window_bins"
-                        )
-                    ),
                 )
             except Exception as error:
                 print(f"Could not prepare {filename} for error plotting: {error}")

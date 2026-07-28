@@ -25,22 +25,27 @@ def calculate_noise_stats(freqs_hz, asd_v_per_sqrt_hz, stats_min_hz, stats_max_h
         return {
             "stats_min_Hz": float(stats_min_hz),
             "stats_max_Hz": float(stats_max_hz),
+            "mean_V_per_sqrtHz": None,
             "median_V_per_sqrtHz": None,
             "floor90_V_per_sqrtHz": None,
+            "mean_nV_per_sqrtHz": None,
             "median_nV_per_sqrtHz": None,
             "floor90_nV_per_sqrtHz": None,
         }
 
     stats_amps = asd_v_per_sqrt_hz[valid]
 
+    mean_v = float(np.mean(stats_amps))
     median_v = float(np.median(stats_amps))
     floor90_v = float(np.percentile(stats_amps, 90))
 
     return {
         "stats_min_Hz": float(stats_min_hz),
         "stats_max_Hz": float(stats_max_hz),
+        "mean_V_per_sqrtHz": mean_v,
         "median_V_per_sqrtHz": median_v,
         "floor90_V_per_sqrtHz": floor90_v,
+        "mean_nV_per_sqrtHz": mean_v * 1e9,
         "median_nV_per_sqrtHz": median_v * 1e9,
         "floor90_nV_per_sqrtHz": floor90_v * 1e9,
     }
@@ -68,21 +73,12 @@ def save_measurement(
     stats_max_hz,
     test=None,
     filename=None,
-    rolling_average_asd_v_per_sqrt_hz=None,
-    rolling_average_window_bins=None,
 ):
     os.makedirs(SAVE_DIR, exist_ok=True)
 
     freqs_hz = np.asarray(freqs_hz, dtype=float)
     mag_v = np.asarray(mag_v, dtype=float)
     asd_v_per_sqrt_hz = np.asarray(asd_v_per_sqrt_hz, dtype=float)
-    if rolling_average_asd_v_per_sqrt_hz is not None:
-        rolling_average_asd_v_per_sqrt_hz = np.asarray(
-            rolling_average_asd_v_per_sqrt_hz,
-            dtype=float,
-        )
-        if rolling_average_asd_v_per_sqrt_hz.shape != asd_v_per_sqrt_hz.shape:
-            rolling_average_asd_v_per_sqrt_hz = None
 
     nyquist_hz = float(sample_rate_hz) / 2.0
     physical = (
@@ -93,10 +89,6 @@ def save_measurement(
     freqs_hz = freqs_hz[physical]
     mag_v = mag_v[physical]
     asd_v_per_sqrt_hz = asd_v_per_sqrt_hz[physical]
-    if rolling_average_asd_v_per_sqrt_hz is not None:
-        rolling_average_asd_v_per_sqrt_hz = rolling_average_asd_v_per_sqrt_hz[
-            physical
-        ]
 
     stats = calculate_noise_stats(
         freqs_hz=freqs_hz,
@@ -104,32 +96,6 @@ def save_measurement(
         stats_min_hz=stats_min_hz,
         stats_max_hz=stats_max_hz,
     )
-    if rolling_average_asd_v_per_sqrt_hz is not None:
-        rolling_stats = calculate_noise_stats(
-            freqs_hz=freqs_hz,
-            asd_v_per_sqrt_hz=rolling_average_asd_v_per_sqrt_hz,
-            stats_min_hz=stats_min_hz,
-            stats_max_hz=stats_max_hz,
-        )
-        stats.update({
-            "rolling_average_window_bins": (
-                None
-                if rolling_average_window_bins is None
-                else int(rolling_average_window_bins)
-            ),
-            "rolling_average_median_V_per_sqrtHz": rolling_stats[
-                "median_V_per_sqrtHz"
-            ],
-            "rolling_average_median_nV_per_sqrtHz": rolling_stats[
-                "median_nV_per_sqrtHz"
-            ],
-            "rolling_average_floor90_V_per_sqrtHz": rolling_stats[
-                "floor90_V_per_sqrtHz"
-            ],
-            "rolling_average_floor90_nV_per_sqrtHz": rolling_stats[
-                "floor90_nV_per_sqrtHz"
-            ],
-        })
 
     if filename is None:
         target_freq_hz = None
@@ -168,13 +134,6 @@ def save_measurement(
         "mag_V": mag_v.tolist(),
         "asd_V_per_sqrtHz": asd_v_per_sqrt_hz.tolist(),
     }
-    if rolling_average_asd_v_per_sqrt_hz is not None:
-        measurement["rolling_average_asd_V_per_sqrtHz"] = (
-            [
-                None if not np.isfinite(value) else float(value)
-                for value in rolling_average_asd_v_per_sqrt_hz
-            ]
-        )
 
     with open(filename, "w") as f:
         json.dump(measurement, f, indent=4)

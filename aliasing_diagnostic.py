@@ -7,6 +7,7 @@ import numpy as np
 
 from config import BAUD, PORT, SAMPLES, active_band_order, make_bands
 from FFT_analysis import compute_fft_analysis
+from plot_style import apply_plot_style
 from serial_io import open_serial, request_raw_sample_rate, send_cmd
 
 
@@ -75,6 +76,7 @@ def read_band_blocks_with_rates(ser, band_order):
 
 
 def main():
+    apply_plot_style()
     args = parse_args()
     target_hz = args.frequency_hz
     if target_hz is None:
@@ -138,7 +140,7 @@ def main():
             )
             ax.set_ylim(1e-15, 1.0)
             ax.grid(True, which="both", alpha=0.3)
-            ax.legend(fontsize=8)
+            ax.legend()
 
             print(
                 f"{band_name}: FFT rate={sample_rate_hz:.3f} Hz, "
@@ -201,7 +203,7 @@ def main():
                     sample_rate_hz / 2.0,
                 )
                 ax.set_ylim(DIAGNOSTIC_Y_MIN, DIAGNOSTIC_Y_MAX)
-                ax.legend(fontsize=8)
+                ax.legend()
 
                 rate_source = "measured" if band_name in measured_rates_hz else "nominal"
                 print(
