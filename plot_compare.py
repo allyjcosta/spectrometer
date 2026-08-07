@@ -142,7 +142,7 @@ def format_range_stats(range_stats):
         if median_nv is None or mean_nv is None:
             parts.append(f"{label}: N/A")
         else:
-            parts.append(f"{label}: med {median_nv:.0f}, mean {mean_nv:.0f}")
+            parts.append(f"{label}: med {median_nv:.2f}, mean {mean_nv:.2f}")
 
     return "\n".join(parts)
 

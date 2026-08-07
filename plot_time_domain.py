@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.ticker import FuncFormatter, MultipleLocator
+from matplotlib.ticker import AutoMinorLocator, FuncFormatter, MultipleLocator
 
 from plot_style import apply_plot_style
 
@@ -10,6 +10,8 @@ TIME_DOMAIN_MIN_Y_SPAN_V = 1e-6
 TIME_DOMAIN_MAX_DISPLAY_SECONDS = 0.100
 TIME_DOMAIN_MAJOR_TICK_SECONDS = 0.010
 TIME_DOMAIN_MINOR_TICK_SECONDS = 0.002
+TIME_DOMAIN_MAJOR_TICK_VOLTS = 0.001
+TIME_DOMAIN_MINOR_TICK_VOLTS = 0.0002
 
 
 def available_block_names(blocks):
@@ -69,7 +71,12 @@ def configure_time_axis(ax, start_seconds, display_seconds):
     else:
         ax.set_xlabel("Time (s)")
         ax.xaxis.set_major_formatter(plt.ScalarFormatter())
-        ax.xaxis.set_minor_locator(plt.NullLocator())
+        ax.xaxis.set_minor_locator(AutoMinorLocator(4))
+
+
+def configure_voltage_axis(ax):
+    ax.yaxis.set_major_locator(MultipleLocator(TIME_DOMAIN_MAJOR_TICK_VOLTS))
+    ax.yaxis.set_minor_locator(MultipleLocator(TIME_DOMAIN_MINOR_TICK_VOLTS))
 
 
 def create_time_domain_plot(
@@ -181,6 +188,7 @@ def update_time_domain_plot(plot, blocks, sample_rates_hz=None):
             ax.set_xlabel(xlabel)
 
         ax.set_ylim(*padded_limits(data))
+        configure_voltage_axis(ax)
         plot["stats_text"][band_name].set_text(block_stats_text(data))
 
     plot["fig"].tight_layout()

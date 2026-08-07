@@ -327,7 +327,7 @@ class LiveInputHandler:
                 target_freq_hz=target_freq_hz,
                 target_amp_v=TEST_SIGNAL_AMP_V,
                 fmin_hz=active_fmin,
-                use_global_peak=True,
+                use_global_peak=False,
             )
 
             try:
